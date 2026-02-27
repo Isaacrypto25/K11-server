@@ -5,20 +5,14 @@
  * Agora lê/escreve no Supabase em vez de arquivos JSON locais.
  *
  * Variáveis de ambiente necessárias no Railway:
- *   SUPABASE_URL        = https://xxx.supabase.co
- *   SUPABASE_KEY        = sua service_role key
+ * SUPABASE_URL        = https://xxx.supabase.co
+ * SUPABASE_KEY        = sua service_role key
  */
 
 'use strict';
 
 const { createClient } = require('@supabase/supabase-js');
 const logger = require('./logger');
-
-// ── CLIENTE SUPABASE ──────────────────────────────────────────
-const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_KEY
-);
 
 const CACHE_TTL_MS = 30_000; // 30s de cache em memória
 
@@ -141,14 +135,24 @@ class DataStore {
         this._reads  = 0;
         this._writes = 0;
         this._errors = 0;
+        this.supabase = null; // Inicializa vazio
 
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_KEY) {
+        const url = process.env.SUPABASE_URL;
+        const key = process.env.SUPABASE_KEY;
+
+        if (!url || !key) {
             logger.warn('DATASTORE', '⚠ SUPABASE_URL ou SUPABASE_KEY não configurados!');
         } else {
-            logger.info('DATASTORE', 'DataStore Supabase inicializado', {
-                url: process.env.SUPABASE_URL,
-                datasets: Object.keys(DATASETS).length,
-            });
+            try {
+                // O .trim() remove espaços vazios ou quebras de linha que causam crash no Railway
+                this.supabase = createClient(url.trim(), key.trim());
+                logger.info('DATASTORE', 'DataStore Supabase inicializado com sucesso', {
+                    url: url.trim(),
+                    datasets: Object.keys(DATASETS).length,
+                });
+            } catch (error) {
+                logger.error('DATASTORE', 'Erro fatal ao instanciar cliente Supabase', { error: error.message });
+            }
         }
     }
 
@@ -166,6 +170,11 @@ class DataStore {
                 logger.debug('DATASTORE', `Cache HIT: ${table}`);
                 return cached.data;
             }
+        }
+
+        if (!this.supabase) {
+            logger.error('DATASTORE', `Supabase não inicializado. Não é possível ler ${table}.`);
+            return [];
         }
 
         try {
@@ -194,7 +203,7 @@ class DataStore {
         let from   = 0;
 
         while (true) {
-            const { data, error } = await supabase
+            const { data, error } = await this.supabase
                 .from(table)
                 .select('*')
                 .range(from, from + PAGE - 1)
@@ -226,11 +235,17 @@ class DataStore {
 
     async set(name, data) {
         const table = DATASETS[name] || name;
+
+        if (!this.supabase) {
+            logger.error('DATASTORE', `Supabase não inicializado. Não é possível escrever em ${table}.`);
+            return false;
+        }
+
         try {
             // Limpa e reinseere
-            await supabase.from(table).delete().neq('id', 0);
+            await this.supabase.from(table).delete().neq('id', 0);
             if (data.length > 0) {
-                const { error } = await supabase.from(table).insert(data);
+                const { error } = await this.supabase.from(table).insert(data);
                 if (error) throw new Error(error.message);
             }
             this._writes++;
@@ -246,8 +261,14 @@ class DataStore {
 
     async updateItem(name, id, patch) {
         const table = DATASETS[name] || name;
+
+        if (!this.supabase) {
+            logger.error('DATASTORE', `Supabase não inicializado. Não é possível atualizar em ${table}.`);
+            return null;
+        }
+
         try {
-            const { data, error } = await supabase
+            const { data, error } = await this.supabase
                 .from(table)
                 .update({ ...patch, updated_at: new Date().toISOString() })
                 .eq('id', id)
@@ -282,7 +303,7 @@ class DataStore {
             cacheSize: this._cache.size,
             cacheTTL:  CACHE_TTL_MS,
             source:    'supabase',
-            url:       process.env.SUPABASE_URL || 'não configurado',
+            url:       process.env.SUPABASE_URL ? process.env.SUPABASE_URL.trim() : 'não configurado',
             datasets:  Object.keys(DATASETS),
         };
     }
