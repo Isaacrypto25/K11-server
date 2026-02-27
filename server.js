@@ -151,6 +151,7 @@ app.use('/api/ai',     aiRoutes);
 // Serve arquivos estáticos do front-end (opcional)
 // Descomente se quiser servir o HTML pelo mesmo servidor:
 // app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static('public'));
 
 // ── 404 ───────────────────────────────────────────────────────
 app.use((req, res) => {
