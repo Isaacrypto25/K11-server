@@ -132,7 +132,8 @@ app.post('/api/auth/resend-pin',  register.resendPinHandler);
 
 app.post('/api/auth/refresh', auth.requireAuth, auth.refreshHandler);
 app.post('/api/auth/logout',  auth.requireAuth, auth.logoutHandler);
-
+app.post('/api/auth/forgot-password', register.forgotPasswordHandler);
+app.post('/api/auth/reset-password',  register.resetPasswordHandler);
 
 // ─────────────────────────────────────────────────────────────
 // ROTAS PÚBLICAS (Sem auth)
