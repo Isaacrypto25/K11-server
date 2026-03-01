@@ -19,7 +19,8 @@
             bottom: 28px;
             left: 0; right: 0;
             text-align: center;
-            z-index: 9999;
+            z-index: 99999;
+            pointer-events: auto;
         }
         #k11-forgot-fallback button {
             background: none;
@@ -28,7 +29,9 @@
             font-size: 13px;
             font-family: 'Inter', sans-serif;
             cursor: pointer;
-            padding: 10px 20px;
+            padding: 14px 32px;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
         }
         #k11-forgot-fallback button:active { color: #FF8C00; }
     </style>
@@ -50,6 +53,13 @@
             var btn      = document.getElementById('btn-forgot-fixed');
 
             btn.addEventListener('click', function() {
+                var internal = document.getElementById('link-forgot');
+                if (internal) internal.click();
+            });
+
+            // iOS: garante que o toque funciona
+            btn.addEventListener('touchend', function(e) {
+                e.preventDefault();
                 var internal = document.getElementById('link-forgot');
                 if (internal) internal.click();
             });
