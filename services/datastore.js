@@ -14,7 +14,8 @@
 const { createClient } = require('@supabase/supabase-js');
 const logger = require('./logger');
 
-const CACHE_TTL_MS = 30_000; // 30s de cache em memória
+const CACHE_TTL_MS = 300_000; // 5 min de cache em memória
+const PAGE_SIZE    = 5_000;   // Supabase suporta até 5000 com service_role key
 
 // ── MAPEAMENTO: nome do dataset → tabela no Supabase ─────────
 const DATASETS = {
@@ -196,16 +197,30 @@ class DataStore {
         }
     }
 
+    // Colunas mínimas por tabela — reduz payload drasticamente
+    _getColumns(table) {
+        const pdvCols = 'id,loja,data_lancamento,hora_registro,nr_produto,texto_breve_material,denominacao_subsecao,quantidade_vendida,quantidade_disponibilizada,totalmente_disponibilizado';
+        const map = {
+            pdv:            pdvCols,
+            pdv_anterior:   pdvCols,
+            pdv_benfica:    pdvCols,
+            pdv_mesquita:   pdvCols,
+            pdv_jacarepagua: pdvCols + ',denominacao_secao',
+        };
+        return map[table] || '*';
+    }
+
     // Paginação automática para tabelas grandes
     async _fetchAll(table) {
-        const PAGE = 1000;
+        const PAGE = PAGE_SIZE;
         let all    = [];
         let from   = 0;
+        const cols = this._getColumns(table);
 
         while (true) {
             const { data, error } = await this.supabase
                 .from(table)
-                .select('*')
+                .select(cols)
                 .range(from, from + PAGE - 1)
                 .order('id', { ascending: true });
 
@@ -295,6 +310,14 @@ class DataStore {
         logger.info('DATASTORE', 'Cache invalidado');
     }
 
+    // Pré-aquece o cache em background — chamado no startup do server.js
+    warmup() {
+        logger.info('DATASTORE', 'Iniciando warmup do cache em background...');
+        this.getAll()
+            .then(() => logger.info('DATASTORE', '✅ Cache aquecido com sucesso'))
+            .catch(err => logger.error('DATASTORE', 'Falha no warmup:', { error: err.message }));
+    }
+
     getStats() {
         return {
             reads:     this._reads,
@@ -320,3 +343,4 @@ class DataStore {
 }
 
 module.exports = new DataStore();
+// Patch já aplicado acima via sed
