@@ -21,6 +21,7 @@
 const crypto = require('crypto');
 const path = require('path');
 const nodemailer = require('nodemailer');
+const { google } = require('googleapis');
 const { createClient } = require('@supabase/supabase-js');
 const { signJWT, hashPin } = require(path.join(__dirname, 'server-auth.js'));
 
@@ -79,23 +80,45 @@ function validateNome(nome) {
 // EMAIL via Gmail + Nodemailer
 // ═══════════════════════════════════════════════════════════
 
-let _transporter = null;
-function getTransporter() {
-    if (!_transporter) {
-        _transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-                user: process.env.GMAIL_USER,
-                pass: process.env.GMAIL_PASS,
-            },
-        });
-    }
-    return _transporter;
+// ═══════════════════════════════════════════════════════════
+// EMAIL via Gmail OAuth2 (HTTPS porta 443 — funciona no Railway)
+// Variáveis necessárias no Railway:
+//   GMAIL_USER         → k11operacionalos@gmail.com
+//   GMAIL_CLIENT_ID    → client_id do JSON baixado no Google Cloud
+//   GMAIL_CLIENT_SECRET→ client_secret do JSON
+//   GMAIL_REFRESH_TOKEN→ refresh_token gerado no OAuth Playground
+// ═══════════════════════════════════════════════════════════
+
+async function getTransporter() {
+    const oauth2Client = new google.auth.OAuth2(
+        process.env.GMAIL_CLIENT_ID,
+        process.env.GMAIL_CLIENT_SECRET,
+        'https://developers.google.com/oauthplayground'
+    );
+
+    oauth2Client.setCredentials({
+        refresh_token: process.env.GMAIL_REFRESH_TOKEN,
+    });
+
+    const { token: accessToken } = await oauth2Client.getAccessToken();
+
+    return nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+            type:         'OAuth2',
+            user:         process.env.GMAIL_USER,
+            clientId:     process.env.GMAIL_CLIENT_ID,
+            clientSecret: process.env.GMAIL_CLIENT_SECRET,
+            refreshToken: process.env.GMAIL_REFRESH_TOKEN,
+            accessToken,
+        },
+    });
 }
 
 async function sendConfirmationEmail(email, nome, pin) {
     const primeiroNome = nome.split(' ')[0];
-    await getTransporter().sendMail({
+    const transporter = await getTransporter();
+    await transporter.sendMail({
         from:    `"K11 OMNI ELITE" <${process.env.GMAIL_USER}>`,
         to:      email,
         subject: `${pin} é seu código de confirmação — K11 OMNI`,
