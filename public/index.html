@@ -1,235 +1,32 @@
-
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>LOGIN - K11 OMNI ELITE</title>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
-    <link rel="stylesheet" href="global.css">
-    <style>
-        /* ── MODE SELECTION MODAL ─────────────────────────── */
-        .mode-overlay {
-            position: fixed; inset: 0;
-            background: rgba(0,0,0,.72);
-            backdrop-filter: blur(6px);
-            display: flex; align-items: center; justify-content: center;
-            z-index: 9999;
-            opacity: 0; pointer-events: none;
-            transition: opacity .35s ease;
-        }
-        .mode-overlay.visible { opacity: 1; pointer-events: all; }
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#090A0F">
+    <title>K11 OMNI ELITE</title>
 
-        .mode-modal {
-            width: 92%; max-width: 420px;
-            background: var(--surface, #1a1f2e);
-            border: 1px solid rgba(255,140,0,.25);
-            border-radius: 18px;
-            padding: 28px 22px 24px;
-            transform: translateY(24px) scale(.96);
-            transition: transform .35s cubic-bezier(.34,1.56,.64,1);
-        }
-        .mode-overlay.visible .mode-modal {
-            transform: translateY(0) scale(1);
-        }
+    <!-- Fontes -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
 
-        .mode-header {
-            text-align: center;
-            margin-bottom: 22px;
-        }
-        .mode-header .mode-user {
-            font-size: 11px; letter-spacing: 2px;
-            color: var(--text-muted, #64748b);
-            margin-bottom: 6px;
-        }
-        .mode-header h2 {
-            font-size: 15px; font-weight: 900;
-            letter-spacing: 2px;
-            color: var(--secondary, #e2e8f0);
-            margin: 0;
-        }
-
-        .mode-cards {
-            display: grid; grid-template-columns: 1fr 1fr;
-            gap: 14px; margin-bottom: 0;
-        }
-
-        .mode-card {
-            border-radius: 14px;
-            border: 1.5px solid var(--border-color, rgba(255,255,255,.08));
-            padding: 20px 14px 18px;
-            cursor: pointer;
-            transition: border-color .2s, transform .18s, box-shadow .2s;
-            text-align: center;
-            background: rgba(255,255,255,.03);
-        }
-        .mode-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 8px 28px rgba(0,0,0,.35);
-        }
-        .mode-card.lite:hover, .mode-card.lite.selected {
-            border-color: #3b82f6;
-            box-shadow: 0 4px 20px rgba(59,130,246,.22);
-        }
-        .mode-card.ultra:hover, .mode-card.ultra.selected {
-            border-color: var(--primary, #ff8c00);
-            box-shadow: 0 4px 20px rgba(255,140,0,.22);
-        }
-        .mode-card .mode-icon {
-            font-size: 28px; margin-bottom: 10px; display: block;
-        }
-        .mode-card .mode-name {
-            font-size: 13px; font-weight: 900;
-            letter-spacing: 2px;
-            margin-bottom: 6px;
-        }
-        .mode-card.lite  .mode-name { color: #3b82f6; }
-        .mode-card.ultra .mode-name { color: var(--primary, #ff8c00); }
-        .mode-card .mode-desc {
-            font-size: 10px; color: var(--text-muted, #64748b);
-            line-height: 1.6;
-        }
-        .mode-card .mode-tags {
-            margin-top: 10px; display: flex; flex-wrap: wrap;
-            gap: 4px; justify-content: center;
-        }
-        .mode-tag {
-            font-size: 9px; font-weight: 700; letter-spacing: 1px;
-            padding: 2px 7px; border-radius: 20px;
-        }
-        .mode-card.lite  .mode-tag { background: rgba(59,130,246,.15); color: #3b82f6; }
-        .mode-card.ultra .mode-tag { background: rgba(255,140,0,.15);  color: #ff8c00; }
-
-        .mode-confirm-btn {
-            display: none; width: 100%; margin-top: 16px;
-            height: 48px; font-size: 13px; font-weight: 900;
-            letter-spacing: 1.5px; border-radius: 10px;
-            border: none; cursor: pointer;
-            transition: opacity .2s;
-        }
-        .mode-confirm-btn.show { display: block; }
-        .mode-confirm-btn.lite-ready  { background: #3b82f6; color: #fff; }
-        .mode-confirm-btn.ultra-ready { background: var(--primary, #ff8c00); color: #111; }
-        .mode-confirm-btn:hover { opacity: .88; }
-    </style>
+    <!-- PWA -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
 </head>
-<body class="login-body transition-layer">
-    <div class="login-wrapper">
-        <div class="op-card" style="width: 90%; max-width: 400px;">
-            <div class="brand-container centered">
-                <svg class="omni-logo-svg" viewBox="0 0 320 80" xmlns="http://www.w3.org/2000/svg">
-                    <defs>
-                        <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                            <stop offset="0%" style="stop-color:var(--primary);stop-opacity:1" />
-                            <stop offset="100%" style="stop-color:#E67E00;stop-opacity:1" />
-                        </linearGradient>
-                    </defs>
-                    <path class="logo-path" d="M35 10 L60 25 L60 55 L35 70 L10 55 L10 25 Z" fill="none" stroke="url(#logoGrad)" stroke-width="3" />
-                    <text x="35" y="44" font-family="monospace" font-size="10" font-weight="900" fill="var(--secondary)" text-anchor="middle">0MNK1</text>
-                    <text x="75" y="40" font-family="'Inter', sans-serif" font-size="26" font-weight="900" fill="var(--secondary)">OMNI <tspan fill="var(--primary)">K11</tspan></text>
-                    <text x="77" y="58" font-family="'Inter', sans-serif" font-size="8" font-weight="800" fill="var(--text-muted)" letter-spacing="2.5">ELITE OPERATIONAL OS</text>
-                </svg>
-            </div>
-            
-            <div class="login-form margin-t-20">
-                <div class="input-group">
-                    <span class="material-symbols-outlined input-icon">person</span>
-                    <input type="number" id="user-re" class="op-input" placeholder="RE / MATRÍCULA" inputmode="numeric">
-                </div>
-                
-                <div class="input-group margin-t-15">
-                    <span class="material-symbols-outlined input-icon">lock</span>
-                    <input type="password" id="user-pass" class="op-input" placeholder="PIN DE ACESSO">
-                </div>
+<body>
 
-                <button id="btn-login" onclick="APP.auth.login()" class="pos-tag btn-action margin-t-20" style="width: 100%; height: 50px; font-size: 14px;">
-                    AUTENTICAR NO KERNEL
-                </button>
-                
-                <div class="centered margin-t-15">
-                    <span class="micro-label txt-muted">TERMINAL: DUQUE DE CAXIAS - RJ</span>
-                </div>
-            </div>
-        </div>
-    </div>
-<!-- ── MODE SELECTION MODAL ────────────────────────────── -->
-<div id="mode-overlay" class="mode-overlay">
-    <div class="mode-modal">
-        <div class="mode-header">
-            <div id="mode-user-label" class="mode-user">OPERADOR AUTENTICADO</div>
-            <h2>SELECIONE O MODO DE OPERAÇÃO</h2>
-        </div>
-        <div class="mode-cards">
-            <div class="mode-card lite" onclick="selectMode('lite')">
-                <span class="mode-icon">⚡</span>
-                <div class="mode-name">LITE</div>
-                <div class="mode-desc">Funções operacionais do dia a dia. Interface limpa e rápida.</div>
-                <div class="mode-tags">
-                    <span class="mode-tag">ESTOQUE</span>
-                    <span class="mode-tag">COLETA</span>
-                    <span class="mode-tag">RASTREIO</span>
-                    <span class="mode-tag">RECEB.</span>
-                    <span class="mode-tag">VOICE</span>
-                </div>
-            </div>
-            <div class="mode-card ultra" onclick="selectMode('ultra')">
-                <span class="mode-icon">🧠</span>
-                <div class="mode-name">ULTRA</div>
-                <div class="mode-desc">Modo completo com análise estratégica e inteligência de dados.</div>
-                <div class="mode-tags">
-                    <span class="mode-tag">DASH</span>
-                    <span class="mode-tag">DUELO</span>
-                    <span class="mode-tag">AÇÕES</span>
-                    <span class="mode-tag">BI</span>
-                    <span class="mode-tag">+ TUDO</span>
-                </div>
-            </div>
-        </div>
-        <button id="mode-confirm-btn" class="mode-confirm-btn" onclick="confirmMode()">
-            ENTRAR
-        </button>
-    </div>
-</div>
+    <!-- Root da UI de autenticação -->
+    <div id="k11-auth-root"></div>
 
-<script>
-    let _selectedMode = null;
-    let _pendingUser  = null;
+    <!-- Config (sem credenciais) -->
+    <script src="k11-config.js"></script>
 
-    function selectMode(mode) {
-        _selectedMode = mode;
-        document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('selected'));
-        document.querySelector(`.mode-card.${mode}`)?.classList.add('selected');
-        const btn = document.getElementById('mode-confirm-btn');
-        btn.className = `mode-confirm-btn show ${mode}-ready`;
-        btn.textContent = mode === 'lite' ? '⚡ ENTRAR NO MODO LITE' : '🧠 ENTRAR NO MODO ULTRA';
-    }
+    <!-- UI de autenticação -->
+    <script src="k11-auth-ui.js"></script>
 
-    function confirmMode() {
-        if (!_selectedMode || !_pendingUser) return;
-        try { sessionStorage.setItem('k11_mode', _selectedMode); } catch(_) {}
-        const btn = document.getElementById('mode-confirm-btn');
-        btn.innerHTML = '<div class="spinner-small" style="display:inline-block;margin-right:8px"></div> INICIANDO...';
-        btn.disabled = true;
-        setTimeout(() => {
-            document.body.classList.add('fade-out');
-            setTimeout(() => { window.location.href = 'dashboard.html'; }, 400);
-        }, 500);
-    }
-
-    // Override auth to show modal instead of redirecting
-    window._showModeModal = function(userName) {
-        _pendingUser = userName;
-        document.getElementById('mode-user-label').textContent = `BEM-VINDO, ${userName.toUpperCase()}`;
-        const overlay = document.getElementById('mode-overlay');
-        overlay.classList.add('visible');
-    };
-</script>
-<script src="k11-config.js"></script>
-<script src="k11-utils.js"></script>
-<script src="k11-ui.js"></script>
-<script src="k11-processors.js"></script>
-<script src="k11-views.js"></script>
-<script src="k11-actions.js"></script>
-<script src="k11-app.js"></script>
 </body>
 </html>

@@ -1,7 +1,14 @@
 /**
  * K11 OMNI ELITE — APP CORE (Bootstrap & Navegação)
  * ════════════════════════════════════════════════════
- * v2.0 — Integrado com K11 OMNI SERVER (Railway)
+ * v3.0 — Autenticação JWT via servidor Railway
+ *
+ * Mudanças de segurança vs v2.0:
+ * - Login agora valida no SERVIDOR (não mais no frontend)
+ * - Token JWT armazenado em sessionStorage (não a senha)
+ * - K11_SERVER_TOKEN removido — todas as chamadas usam JWT
+ * - USUARIOS_VALIDOS removido do frontend
+ * - Groq key removida do frontend
  *
  * Depende de: k11-config.js, k11-utils.js, k11-ui.js,
  *             k11-processors.js, k11-views.js, k11-actions.js
@@ -68,9 +75,15 @@ const APP = {
         },
     },
 
-    // ── AUTENTICAÇÃO ─────────────────────────────────────────────
+    // ── AUTENTICAÇÃO (JWT via servidor) ─────────────────────────
     auth: {
-        login() {
+
+        /**
+         * Login: envia RE + PIN para o servidor.
+         * O servidor valida, retorna JWT + dados do usuário.
+         * Nenhuma credencial fica no frontend.
+         */
+        async login() {
             const reEl   = document.getElementById('user-re');
             const passEl = document.getElementById('user-pass');
             const btn    = document.getElementById('btn-login');
@@ -84,52 +97,98 @@ const APP = {
                 return;
             }
 
-            const usuario = USUARIOS_VALIDOS[re];
-            if (!usuario || usuario.pin !== pass) {
-                [reEl, passEl].forEach(el => {
-                    el?.classList.add('shake-error');
-                    setTimeout(() => el?.classList.remove('shake-error'), 500);
-                });
-                APP.ui.toast('RE ou PIN incorreto.', 'danger');
-                if (btn) btn.innerHTML = 'AUTENTICAR NO KERNEL';
-                return;
-            }
-
-            try { sessionStorage.setItem('k11_user', JSON.stringify({ re, nome: usuario.nome, role: usuario.role })); } catch (_) {}
-
             if (btn) btn.innerHTML = '<div class="spinner-small"></div> AUTENTICANDO...';
-            setTimeout(() => {
+
+            try {
+                const res = await fetch(`${K11_SERVER_URL}/api/auth/login`, {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    JSON.stringify({ re, pin: pass }),
+                    signal:  AbortSignal.timeout(8000),
+                });
+
+                const data = await res.json();
+
+                if (!res.ok || !data.ok) {
+                    // Credencial errada — servidor retornou erro
+                    [reEl, passEl].forEach(el => {
+                        el?.classList.add('shake-error');
+                        setTimeout(() => el?.classList.remove('shake-error'), 500);
+                    });
+                    APP.ui.toast(data.error || 'RE ou PIN incorreto.', 'danger');
+                    if (btn) btn.innerHTML = 'AUTENTICAR NO KERNEL';
+                    return;
+                }
+
+                // Salva JWT e dados do usuário (nunca o PIN)
+                K11Auth.setToken(data.token);
+                try {
+                    sessionStorage.setItem('k11_user', JSON.stringify({
+                        re,
+                        nome: data.user.nome,
+                        role: data.user.role,
+                    }));
+                } catch {}
+
                 if (btn) btn.innerHTML = 'AUTENTICAR NO KERNEL';
-                if (usuario.role === 'super') {
-                    try { sessionStorage.setItem('k11_mode', 'ultra'); } catch (_) {}
+
+                // Redireciona conforme role
+                if (data.user.role === 'super') {
+                    try { sessionStorage.setItem('k11_mode', 'ultra'); } catch {}
                     document.body.classList.add('fade-out');
                     setTimeout(() => { window.location.href = 'dashboard.html'; }, 400);
                 } else if (typeof window._showModeModal === 'function') {
-                    window._showModeModal(usuario.nome);
+                    window._showModeModal(data.user.nome);
                 } else {
-                    try { sessionStorage.setItem('k11_mode', 'ultra'); } catch (_) {}
+                    try { sessionStorage.setItem('k11_mode', 'ultra'); } catch {}
                     document.body.classList.add('fade-out');
                     setTimeout(() => { window.location.href = 'dashboard.html'; }, 400);
                 }
-            }, 600);
+
+            } catch (err) {
+                APP.ui.toast('Erro de conexão com o servidor.', 'danger');
+                if (btn) btn.innerHTML = 'AUTENTICAR NO KERNEL';
+                console.error('[K11 auth]', err.message);
+            }
+        },
+
+        /**
+         * Verifica se o JWT atual ainda é válido.
+         * Se não for, redireciona para login.
+         */
+        guard() {
+            if (!K11Auth.isAuthenticated()) {
+                console.warn('[K11 auth] Sessão expirada ou inválida. Redirecionando...');
+                K11Auth.clearToken();
+                window.location.href = 'index.html';
+                return false;
+            }
+            return true;
+        },
+
+        logout() {
+            K11Auth.clearToken();
+            window.location.href = 'index.html';
         },
     },
 
     // ── BOOTSTRAP ────────────────────────────────────────────────
     async init() {
+        // Guard: garante que o usuário está autenticado
+        if (!APP.auth.guard()) return;
+
         const st    = document.getElementById('engine-status');
         const stage = document.getElementById('stage');
 
         if (st)    st.innerHTML    = '<div class="spinner-small"></div> CONECTANDO AO SERVIDOR...';
         if (stage) stage.innerHTML = APP.views._skeleton();
 
-        // Envia log de boot para o servidor
         APP._serverLog('info', 'FRONTEND', 'K11 OMNI init() iniciado');
 
         try {
             const t = Date.now();
 
-            // ── Carrega tudo de uma vez via /api/data/all ──────────────
+            // ── Carrega tudo via /api/data/all (JWT no header) ────────
             let allData = null;
             try {
                 const res = await APP._serverFetch('/api/data/all');
@@ -140,10 +199,16 @@ const APP = {
                     });
                 }
             } catch (e) {
-                APP._serverLog('warn', 'FRONTEND', 'Servidor indisponível, tentando local', { error: e.message });
+                // Se for 401, sessão expirou
+                if (e.message?.includes('401')) {
+                    APP.ui.toast('Sessão expirada. Faça login novamente.', 'danger');
+                    setTimeout(() => APP.auth.logout(), 2000);
+                    return;
+                }
+                APP._serverLog('warn', 'FRONTEND', 'Servidor indisponível', { error: e.message });
             }
 
-            // ── Fallback para arquivos locais se servidor offline ──────
+            // ── Fallback para arquivos locais (modo offline/demo) ─────
             let p, a, m, v, vAnt, tar, vMesq, vJaca, vBenf, forn;
 
             if (allData) {
@@ -158,7 +223,6 @@ const APP = {
                 vBenf = allData.pdvbenfica     || [];
                 forn  = allData.fornecedor     || [];
             } else {
-                // Fallback: carrega localmente
                 [p, a, m, v, vAnt, tar, vMesq, vJaca, vBenf, forn] = await Promise.all([
                     APP._safeFetch(`./produtos.json?t=${t}`),
                     APP._safeFetch(`./auditoria.json?t=${t}`),
@@ -173,10 +237,9 @@ const APP = {
                 ]);
             }
 
-            // ── Fornecedor raw + maps ──────────────────────────────────
+            // ── Fornecedor ────────────────────────────────────────────
             APP.db._rawFornecedor = Array.isArray(forn) ? forn : [];
-
-            APP.db.fornecedorMap = new Map();
+            APP.db.fornecedorMap  = new Map();
             APP.db._rawFornecedor.forEach(f => {
                 if (f?.FIELD1 === 'Número Pedido' || f?.FIELD1 === 'Cliente') return;
                 const sku     = String(f?.FIELD3 ?? '').trim();
@@ -185,7 +248,7 @@ const APP = {
                 if (sku) APP.db.fornecedorMap.set(sku, nome || 'Fornecedor Indefinido');
             });
 
-            // ── Agendamentos brutos ────────────────────────────────────
+            // ── Agendamentos ──────────────────────────────────────────
             const _agMap = new Map();
             APP.db._rawFornecedor.forEach(f => {
                 if (f?.FIELD1 === 'Número Pedido' || f?.FIELD1 === 'Cliente') return;
@@ -226,12 +289,11 @@ const APP = {
                 done: false,
             }));
 
-            APP.db.movimento   = Array.isArray(m)   ? m   : Object.values(m ?? {});
-            APP.db.pdv         = Array.isArray(v)   ? v   : [];
+            APP.db.movimento   = Array.isArray(m)    ? m    : Object.values(m ?? {});
+            APP.db.pdv         = Array.isArray(v)    ? v    : [];
             APP.db.pdvAnterior = Array.isArray(vAnt) ? vAnt : [];
             APP.db.pdvExtra    = { mesquita: vMesq ?? [], jacarepagua: vJaca ?? [], benfica: vBenf ?? [] };
 
-            // Tarefas — preserva estado done do servidor
             APP.db.tarefas = (Array.isArray(tar) ? tar : []).map((tk, i) => ({
                 ...tk, id: tk.id ?? i, done: tk.done ?? false,
                 task: tk?.task ?? tk?.['Tarefa'] ?? 'Tarefa s/ descrição',
@@ -239,7 +301,7 @@ const APP = {
 
             APP._restoreFilaFromSession();
 
-            // ── Processamento ──────────────────────────────────────────
+            // ── Processamento ─────────────────────────────────────────
             APP.processarEstoque(p);
 
             APP.db.agendamentos = [...(APP.db._agMapRaw ?? new Map()).values()].map(ag => {
@@ -258,7 +320,7 @@ const APP = {
             APP.processarUCGlobal_DPA();
             APP._detectarInconsistencias();
 
-            // ── Online ────────────────────────────────────────────────
+            // ── Status ────────────────────────────────────────────────
             const isServerMode = !!allData;
             if (st) {
                 st.innerText = isServerMode ? '● K11 OMNI ONLINE ⚡ SERVER' : '● K11 OMNI ONLINE';
@@ -278,14 +340,18 @@ const APP = {
 
             const defaultView = (typeof window._K11_DEFAULT_VIEW !== 'undefined')
                 ? window._K11_DEFAULT_VIEW : 'dash';
+
             APP.view(defaultView);
 
             if (APP._warnNoServer) APP._showNoServerWarning();
 
+            // Dispara evento k11:ready para PWA deep links
+            window.dispatchEvent(new Event('k11:ready'));
+
             APP._serverLog('info', 'FRONTEND', 'K11 OMNI carregado com sucesso', {
-                produtos:  APP.db.produtos.length,
-                pdv:       APP.db.pdv.length,
-                tarefas:   APP.db.tarefas.length,
+                produtos:   APP.db.produtos.length,
+                pdv:        APP.db.pdv.length,
+                tarefas:    APP.db.tarefas.length,
                 serverMode: isServerMode,
             });
 
@@ -297,18 +363,22 @@ const APP = {
         }
     },
 
-    // ── SERVER FETCH — fetch autenticado para o servidor ─────────
+    // ── SERVER FETCH — usa JWT do sessionStorage ─────────────────
     async _serverFetch(path, options = {}) {
-        const url = `${K11_SERVER_URL}${path}`;
+        const token = K11Auth.getToken();
+        const url   = `${K11_SERVER_URL}${path}`;
+
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
         try {
             const r = await fetch(url, {
                 ...options,
                 signal: controller.signal,
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${K11_SERVER_TOKEN}`,
+                    'Content-Type':  'application/json',
+                    // JWT em vez de token estático hardcoded
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
                     ...(options.headers || {}),
                 },
             });
@@ -321,40 +391,36 @@ const APP = {
         }
     },
 
-    // ── SERVER LOG — envia log do front para o servidor ──────────
+    // ── SERVER LOG ────────────────────────────────────────────────
     _serverLog(level, module, message, meta = null) {
-        if (!K11_SERVER_URL || !K11_SERVER_TOKEN) return;
-        // Fire-and-forget, sem await
+        const token = K11Auth.getToken();
+        if (!K11_SERVER_URL) return;
         fetch(`${K11_SERVER_URL}/api/system/log`, {
             method:  'POST',
             headers: {
                 'Content-Type':  'application/json',
-                'Authorization': `Bearer ${K11_SERVER_TOKEN}`,
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
             },
             body: JSON.stringify({ level, module, message, meta }),
-        }).catch(() => {}); // silencia erros de rede
+        }).catch(() => {});
     },
 
-    // ── TOGGLE TAREFA COM PERSISTÊNCIA NO SERVIDOR ───────────────
+    // ── TOGGLE TAREFA ─────────────────────────────────────────────
     async toggleTarefaServer(id) {
         try {
             const res = await APP._serverFetch(`/api/data/tarefas/${id}/toggle`, { method: 'POST' });
             if (res?.ok && res?.tarefa) {
-                // Atualiza estado local com o retorno do servidor
                 const t = APP.db.tarefas.find(x => String(x.id) === String(id));
                 if (t) t.done = res.tarefa.done;
                 APP.view('detalheTarefas');
-                APP._serverLog('info', 'FRONTEND', `Tarefa ${id} toggled`, { done: res.tarefa.done });
             }
         } catch (e) {
-            // Fallback: toggle local
             const t = APP.db.tarefas.find(x => x.id === id);
             if (t) { t.done = !t.done; APP.view('detalheTarefas'); }
-            APP._serverLog('warn', 'FRONTEND', `Toggle tarefa ${id} offline`, { error: e.message });
         }
     },
 
-    // ── FETCH LOCAL (fallback) ────────────────────────────────────
+    // ── FETCH LOCAL (fallback offline) ───────────────────────────
     async _safeFetch(url, retries = FETCH_RETRY) {
         const controller = new AbortController();
         const timer      = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -370,29 +436,25 @@ const APP = {
                 return APP._safeFetch(url, retries - 1);
             }
             const isFileProtocol = location.protocol === 'file:';
-            const isDataUrl      = location.href.startsWith('data:');
-            const isSpck         = navigator.userAgent.includes('Spck') || location.hostname === '';
-            if (isFileProtocol || isDataUrl || isSpck) APP._warnNoServer = true;
+            if (isFileProtocol) APP._warnNoServer = true;
             console.warn(`[K11 fetch] Falhou: ${url}`, e?.message || e);
             return [];
         }
     },
 
-    // ── AVISO DE AMBIENTE SEM SERVIDOR ───────────────────────────
     _showNoServerWarning() {
         const st = document.getElementById('engine-status');
         if (st) { st.innerHTML = '⚠ MODO DEMO — sem dados'; st.style.color = 'var(--warning, #eab308)'; }
     },
 
-    // ── DELEGAÇÃO PARA MÓDULOS EXTERNOS ──────────────────────────
+    // ── DELEGAÇÕES ────────────────────────────────────────────────
     getCapacidade: (desc) => getCapacidade(desc),
-
-    processarEstoque(data)      { Processors.processarEstoque(data);       },
-    processarDueloAqua()        { Processors.processarDueloAqua();         },
-    processarBI_DualTrend()     { Processors.processarBI_DualTrend();      },
-    processarUCGlobal_DPA()     { Processors.processarUCGlobal_DPA();      },
-    _gerarAcoesPrioritarias()   { return Processors.gerarAcoesPrioritarias(); },
-    _detectarInconsistencias()  { Processors.detectarInconsistencias();    },
+    processarEstoque(data)      { Processors.processarEstoque(data);           },
+    processarDueloAqua()        { Processors.processarDueloAqua();             },
+    processarBI_DualTrend()     { Processors.processarBI_DualTrend();          },
+    processarUCGlobal_DPA()     { Processors.processarUCGlobal_DPA();          },
+    _gerarAcoesPrioritarias()   { return Processors.gerarAcoesPrioritarias();  },
+    _detectarInconsistencias()  { Processors.detectarInconsistencias();        },
 
     views:   Views,
     actions: Actions,
@@ -411,7 +473,7 @@ const APP = {
         if (v === 'operacional') setTimeout(() => APP._setupSwipeFila(), 50);
     },
 
-    // ── HELPERS DE UI ─────────────────────────────────────────────
+    // ── UI HELPERS ────────────────────────────────────────────────
     _updateNavBadges() {
         const rupturas = APP.db.produtos.filter(p => p.categoriaCor === 'red').length;
         const gargalos = APP.db.ucGlobal.length;
@@ -436,7 +498,7 @@ const APP = {
             const idx = parseInt(el.dataset.filaIdx, 10);
             let startX = 0, isDragging = false;
             el.addEventListener('touchstart', e => { startX = e.touches[0].clientX; isDragging = true; el.style.transition = 'none'; }, { passive: true });
-            el.addEventListener('touchmove', e => { if (!isDragging) return; const dx = e.touches[0].clientX - startX; if (dx < 0) el.style.transform = `translateX(${dx}px)`; }, { passive: true });
+            el.addEventListener('touchmove',  e => { if (!isDragging) return; const dx = e.touches[0].clientX - startX; if (dx < 0) el.style.transform = `translateX(${dx}px)`; }, { passive: true });
             el.addEventListener('touchend', e => {
                 if (!isDragging) return; isDragging = false;
                 const dx = e.changedTouches[0].clientX - startX;
@@ -447,17 +509,15 @@ const APP = {
         });
     },
 
-    _saveFilaToSession()    { try { sessionStorage.setItem('k11_fila', JSON.stringify(APP.db.fila)); } catch (_) {} },
+    _saveFilaToSession()    { try { sessionStorage.setItem('k11_fila', JSON.stringify(APP.db.fila)); } catch {} },
     _restoreFilaFromSession() {
         try { const raw = sessionStorage.getItem('k11_fila'); if (raw) APP.db.fila = JSON.parse(raw); }
-        catch (_) { APP.db.fila = []; }
+        catch { APP.db.fila = []; }
     },
 };
 
-// ─── EXPOSIÇÃO GLOBAL ─────────────────────────────────────────
 window.APP = APP;
 
-// ─── ENTRY POINT ──────────────────────────────────────────────
 window.addEventListener('load', () => {
     if (document.getElementById('engine-status')) APP.init();
 });

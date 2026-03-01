@@ -1,12 +1,16 @@
 /**
- * K11 OMNI ELITE — CONFIGURAÇÕES E CONSTANTES
- * ═══════════════════════════════════════════
- * Centraliza todos os valores configuráveis da aplicação.
+ * K11 OMNI ELITE — CONFIGURAÇÕES PÚBLICAS
+ * ════════════════════════════════════════
+ * ⚠ ESTE ARQUIVO É PÚBLICO — nunca coloque credenciais aqui.
+ * Tokens, senhas e chaves de API vivem nas variáveis de ambiente do Railway.
+ *
+ * O frontend agora autentica via /api/auth/login (JWT).
+ * O servidor valida as credenciais e retorna um token seguro.
  */
 
 'use strict';
 
-// ─── TUNÁVEIS ─────────────────────────────────────────────────
+// ─── TUNÁVEIS (sem segredos) ──────────────────────────────────
 const FETCH_TIMEOUT_MS  = 8000;
 const FETCH_RETRY       = 1;
 const DEBOUNCE_DELAY_MS = 280;
@@ -14,23 +18,18 @@ const ANIM_DURATION_MS  = 1100;
 const TOAST_DURATION_MS = 3200;
 
 // ─── SERVIDOR K11 OMNI ────────────────────────────────────────
-// URL do backend no Railway
-const K11_SERVER_URL   = 'https://web-production-8c4b.up.railway.app';
-const K11_SERVER_TOKEN = 'aa62b3d9df5f32d18ccb00ca933be51da8420ffe27a7b7a5a7f87aab49472175';
+// Apenas a URL base — o token JWT vem do login, não fica hardcoded
+const K11_SERVER_URL = 'https://web-production-8c4b.up.railway.app';
 
 // ─── GOOGLE CLOUD TTS ─────────────────────────────────────────
-const K11_GOOGLE_TTS_KEY   = 'SUA_CHAVE_AQUI';
+// A chave TTS deve ser movida para o servidor (Railway)
+// O frontend chama /api/tts e o servidor usa a chave internamente
 const K11_GOOGLE_TTS_VOICE = 'pt-BR-Neural2-C';
 
 // ─── GROQ AI ──────────────────────────────────────────────────
-const K11_GROQ_API_KEY = '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';
-
-// ─── USUÁRIOS VÁLIDOS ─────────────────────────────────────────
-const USUARIOS_VALIDOS = {
-    '11111': { pin: '1234', nome: 'Supervisor K11', role: 'super' },
-    '22222': { pin: '2222', nome: 'Operador A',     role: 'op'   },
-    '33333': { pin: '3333', nome: 'Operador B',     role: 'op'   },
-};
+// A chave Groq foi movida para variável de ambiente GROQ_API_KEY no Railway
+// O frontend chama /api/ai/chat e o servidor usa a chave internamente
+// K11Setup ainda permite que o usuário informe a própria chave como fallback
 
 // ─── REGRAS DE CAPACIDADE DO PKL ──────────────────────────────
 const REGRAS_CAPACIDADE = {
@@ -45,3 +44,45 @@ const REGRAS_CAPACIDADE = {
     },
 };
 const CAPACIDADE_PADRAO = 50;
+
+// ─── HELPERS DE AUTH (JWT no sessionStorage) ──────────────────
+const K11Auth = {
+    _KEY: 'k11_jwt',
+
+    getToken() {
+        try { return sessionStorage.getItem(this._KEY); } catch { return null; }
+    },
+
+    setToken(token) {
+        try { sessionStorage.setItem(this._KEY, token); } catch {}
+    },
+
+    clearToken() {
+        try {
+            sessionStorage.removeItem(this._KEY);
+            sessionStorage.removeItem('k11_user');
+            sessionStorage.removeItem('k11_mode');
+        } catch {}
+    },
+
+    isAuthenticated() {
+        const token = this.getToken();
+        if (!token) return false;
+        // Verifica expiração do payload JWT (sem validar assinatura — isso é do servidor)
+        try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            return payload.exp * 1000 > Date.now();
+        } catch {
+            return false;
+        }
+    },
+
+    getUser() {
+        try {
+            const raw = sessionStorage.getItem('k11_user');
+            return raw ? JSON.parse(raw) : null;
+        } catch {
+            return null;
+        }
+    },
+};
