@@ -34,7 +34,7 @@ const PBKDF2_DIGEST     = 'sha256';
 function hashPin(pin) {
     const salt = crypto.randomBytes(32).toString('hex');
     const dk   = crypto.pbkdf2Sync(pin, salt, PBKDF2_ITERATIONS, PBKDF2_KEYLEN, PBKDF2_DIGEST);
-    return `pbkdf2${salt}${dk.toString('hex')}`;
+    return `pbkdf2$${salt}$${dk.toString('hex')}`;
 }
 
 function verifyPin(pin, storedHash) {
