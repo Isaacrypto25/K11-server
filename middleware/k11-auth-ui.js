@@ -31,10 +31,11 @@ const K11AuthUI = (() => {
         font-family: 'Inter', sans-serif;
         min-height: 100vh;
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         justify-content: center;
-        padding: 20px;
+        padding: 40px 20px;
         overflow-x: hidden;
+        overflow-y: auto;
     }
 
     /* Grid background */
