@@ -50,7 +50,9 @@ const systemRoutes = require('./routes/system');
 const aiRoutes = require('./routes/ai');
 
 // ─────────────────────────────────────────────────────────────
+
 const app = express();
+app.set('trust proxy', 1);
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
 logger.info('BOOT', '════════════════════════════════════════');
