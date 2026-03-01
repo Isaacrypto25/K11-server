@@ -12,10 +12,63 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <style>
+        #k11-forgot-fallback {
+            display: none;
+            position: fixed;
+            bottom: 28px;
+            left: 0; right: 0;
+            text-align: center;
+            z-index: 99999;
+        }
+        #k11-forgot-fallback button {
+            background: none;
+            border: none;
+            color: #6B7280;
+            font-size: 13px;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            padding: 14px 32px;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+        #k11-forgot-fallback button:active { color: #FF8C00; }
+    </style>
 </head>
 <body>
+
     <div id="k11-auth-root"></div>
-    <script src="k11-config.js?v=1772394500"></script>
-    <script src="k11-auth-ui.js?v=1772394500"></script>
+
+    <div id="k11-forgot-fallback">
+        <button id="btn-forgot-fixed">Esqueci minha senha</button>
+    </div>
+
+    <script src="k11-config.js?v=1772395000"></script>
+    <script src="k11-auth-ui.js?v=1772395000"></script>
+
+    <script>
+        (function() {
+            var fallback = document.getElementById('k11-forgot-fallback');
+            var btn      = document.getElementById('btn-forgot-fixed');
+
+            function goForgot(e) {
+                if (e) e.preventDefault();
+                K11AuthUI.showForgot();
+            }
+
+            btn.addEventListener('click', goForgot);
+            btn.addEventListener('touchend', goForgot);
+
+            function sync() {
+                var onLogin = !!document.getElementById('btn-login');
+                fallback.style.display = onLogin ? 'block' : 'none';
+            }
+
+            var observer = new MutationObserver(sync);
+            observer.observe(document.body, { childList: true, subtree: true });
+            setTimeout(sync, 500);
+        })();
+    </script>
+
 </body>
 </html>

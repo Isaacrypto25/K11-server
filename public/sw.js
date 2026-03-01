@@ -7,9 +7,9 @@
 
 'use strict';
 
-const CACHE_NAME    = 'k11-omni-v4';
-const CACHE_STATIC  = 'k11-static-v4';
-const CACHE_DYNAMIC = 'k11-dynamic-v4';
+const CACHE_NAME    = 'k11-omni-v5';
+const CACHE_STATIC  = 'k11-static-v5';
+const CACHE_DYNAMIC = 'k11-dynamic-v5';
 
 // ── Assets que entram no cache imediatamente ao instalar ──────
 const STATIC_ASSETS = [
@@ -80,19 +80,15 @@ self.addEventListener('install', (event) => {
 // ACTIVATE — limpa caches antigos
 // ─────────────────────────────────────────────────────────────
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Ativando novo Service Worker...');
+  console.log('[SW] Ativando novo Service Worker v5...');
   event.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(
-        keys
-          .filter(k => k !== CACHE_STATIC && k !== CACHE_DYNAMIC)
-          .map(k => {
-            console.log('[SW] Removendo cache antigo:', k);
-            return caches.delete(k);
-          })
-      )
+      Promise.all(keys.map(k => {
+        console.log('[SW] Removendo cache:', k);
+        return caches.delete(k); // deleta TODOS, não só os antigos
+      }))
     ).then(() => {
-      console.log('[SW] ✅ Service Worker ativo e controlando.');
+      console.log('[SW] ✅ Todos os caches limpos. Service Worker ativo.');
       return self.clients.claim();
     })
   );
