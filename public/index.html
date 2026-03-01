@@ -7,26 +7,63 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#090A0F">
     <title>K11 OMNI ELITE</title>
-
-    <!-- Fontes -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
-
-    <!-- PWA -->
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <style>
+        #k11-forgot-fallback {
+            display: none;
+            position: fixed;
+            bottom: 28px;
+            left: 0; right: 0;
+            text-align: center;
+            z-index: 9999;
+        }
+        #k11-forgot-fallback button {
+            background: none;
+            border: none;
+            color: #6B7280;
+            font-size: 13px;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            padding: 10px 20px;
+        }
+        #k11-forgot-fallback button:active { color: #FF8C00; }
+    </style>
 </head>
 <body>
 
-    <!-- Root da UI de autenticação -->
     <div id="k11-auth-root"></div>
 
-    <!-- Config (sem credenciais) -->
-    <script src="k11-config.js?v=1772393692"></script>
+    <div id="k11-forgot-fallback">
+        <button id="btn-forgot-fixed">Esqueci minha senha</button>
+    </div>
 
-    <!-- UI de autenticação -->
+    <script src="k11-config.js?v=1772393692"></script>
     <script src="k11-auth-ui.js?v=1772393692"></script>
+
+    <script>
+        (function() {
+            var fallback = document.getElementById('k11-forgot-fallback');
+            var btn      = document.getElementById('btn-forgot-fixed');
+
+            btn.addEventListener('click', function() {
+                var internal = document.getElementById('link-forgot');
+                if (internal) internal.click();
+            });
+
+            function sync() {
+                var onLogin = !!document.getElementById('btn-login');
+                fallback.style.display = onLogin ? 'block' : 'none';
+            }
+
+            var observer = new MutationObserver(sync);
+            observer.observe(document.body, { childList: true, subtree: true });
+            setTimeout(sync, 500);
+        })();
+    </script>
 
 </body>
 </html>
