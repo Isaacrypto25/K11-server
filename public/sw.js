@@ -7,9 +7,9 @@
 
 'use strict';
 
-const CACHE_NAME    = 'k11-omni-v3';
-const CACHE_STATIC  = 'k11-static-v3';
-const CACHE_DYNAMIC = 'k11-dynamic-v3';
+const CACHE_NAME    = 'k11-omni-v4';
+const CACHE_STATIC  = 'k11-static-v4';
+const CACHE_DYNAMIC = 'k11-dynamic-v4';
 
 // ── Assets que entram no cache imediatamente ao instalar ──────
 const STATIC_ASSETS = [
