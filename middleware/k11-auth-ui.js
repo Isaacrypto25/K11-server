@@ -480,7 +480,7 @@ const K11AuthUI = (() => {
             </div>
         </div>
 
-        <div id="auth-toast"></div>\`;
+        <div id="auth-toast"></div>`;
     }
 
     function _renderResetPin() {
@@ -526,7 +526,7 @@ const K11AuthUI = (() => {
             </div>
         </div>
 
-        <div id="auth-toast"></div>\`;
+        <div id="auth-toast"></div>`;
     }
 
 
@@ -912,7 +912,7 @@ const K11AuthUI = (() => {
             const data = await res.json();
 
             if (!res.ok || !data.ok) {
-                _showToast(data.error || 'Erro ao enviar código.', 'error');
+                _toast(data.error || 'Erro ao enviar código.', 'danger');
                 _setLoading('btn-forgot', false, 'ENVIAR CÓDIGO');
                 return;
             }
@@ -922,7 +922,7 @@ const K11AuthUI = (() => {
             _render('resetpin');
 
         } catch (err) {
-            _showToast('Erro de conexão. Tente novamente.', 'error');
+            _toast('Erro de conexão. Tente novamente.', 'danger');
             _setLoading('btn-forgot', false, 'ENVIAR CÓDIGO');
         }
     }
@@ -991,11 +991,11 @@ const K11AuthUI = (() => {
             }
 
             sessionStorage.removeItem('k11_reset_ldap');
-            _showToast('Senha alterada com sucesso!', 'success');
+            _toast('Senha alterada com sucesso!', 'success');
             setTimeout(() => _render('login'), 1800);
 
         } catch (err) {
-            _showToast('Erro de conexão. Tente novamente.', 'error');
+            _toast('Erro de conexão. Tente novamente.', 'danger');
             _setLoading('btn-reset', false, 'REDEFINIR SENHA');
         }
     }
