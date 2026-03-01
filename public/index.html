@@ -20,7 +20,6 @@
             left: 0; right: 0;
             text-align: center;
             z-index: 99999;
-            pointer-events: auto;
         }
         #k11-forgot-fallback button {
             background: none;
@@ -44,25 +43,21 @@
         <button id="btn-forgot-fixed">Esqueci minha senha</button>
     </div>
 
-    <script src="k11-config.js?v=1772393692"></script>
-    <script src="k11-auth-ui.js?v=1772393692"></script>
+    <script src="k11-config.js?v=1772393999"></script>
+    <script src="k11-auth-ui.js?v=1772393999"></script>
 
     <script>
         (function() {
             var fallback = document.getElementById('k11-forgot-fallback');
             var btn      = document.getElementById('btn-forgot-fixed');
 
-            btn.addEventListener('click', function() {
-                var internal = document.getElementById('link-forgot');
-                if (internal) internal.click();
-            });
+            function goForgot(e) {
+                if (e) e.preventDefault();
+                K11AuthUI.showForgot();
+            }
 
-            // iOS: garante que o toque funciona
-            btn.addEventListener('touchend', function(e) {
-                e.preventDefault();
-                var internal = document.getElementById('link-forgot');
-                if (internal) internal.click();
-            });
+            btn.addEventListener('click', goForgot);
+            btn.addEventListener('touchend', goForgot);
 
             function sync() {
                 var onLogin = !!document.getElementById('btn-login');
