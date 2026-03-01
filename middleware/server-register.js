@@ -607,7 +607,7 @@ async function resetPasswordHandler(req, res) {
         const novoHash = hashPin(novaSenha);
         const { error: updateError } = await supabase
             .from('k11_users')
-            .update({ pin_hash: novoHash, atualizado_em: new Date().toISOString() })
+            .update({ pin_hash: novoHash })
             .eq('ldap', pending.ldap);
 
         if (updateError) throw new Error(updateError.message);
