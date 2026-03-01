@@ -27,7 +27,7 @@ const K11_SERVER_URL = 'https://web-production-8c4b.up.railway.app';
 const K11_GOOGLE_TTS_VOICE = 'pt-BR-Neural2-C';
 
 // ─── GROQ AI ──────────────────────────────────────────────────
-const K11_GROQ_API_KEY = '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';
+const K11_GROQ_API_KEY = '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';
 
 // ─── REGRAS DE CAPACIDADE DO PKL ──────────────────────────────
 const REGRAS_CAPACIDADE = {
