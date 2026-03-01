@@ -7,15 +7,18 @@
 
 'use strict';
 
-const CACHE_NAME    = 'k11-omni-v1';
-const CACHE_STATIC  = 'k11-static-v1';
-const CACHE_DYNAMIC = 'k11-dynamic-v1';
+const CACHE_NAME    = 'k11-omni-v2';
+const CACHE_STATIC  = 'k11-static-v2';
+const CACHE_DYNAMIC = 'k11-dynamic-v2';
 
 // ── Assets que entram no cache imediatamente ao instalar ──────
 const STATIC_ASSETS = [
   '/dashboard.html',
   '/global.css',
+  '/',
+  '/index.html',
   '/k11-config.js',
+  '/k11-auth-ui.js',
   '/k11-utils.js',
   '/k11-ui.js',
   '/k11-processors.js',
