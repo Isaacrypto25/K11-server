@@ -3,10 +3,9 @@
  * ════════════════════════════════════════════
  * Rotas de auto-cadastro com validação Obramax + email de confirmação.
  *
- * ── VARIÁVEIS DE AMBIENTE NECESSÁRIAS (Railway Variables) ────
+ * ── VARIÁVEL DE AMBIENTE NECESSÁRIA (Railway Variables) ───────
  *   GMAIL_USER  → seuemail@gmail.com
- *   GMAIL_PASS  → senha de app Google (16 chars, não a senha normal)
- *                 Gerar em: myaccount.google.com → Segurança → Senhas de app
+ *   GMAIL_PASS  → senha de app Google (16 chars — myaccount.google.com → Senhas de app)
  *
  * ── COMO INTEGRAR NO SEU server.js ───────────────────────────
  *   const register = require('./server-register');
@@ -32,7 +31,8 @@ let _supabase = null;
 function getSupabase() {
     if (!_supabase) _supabase = createClient(
         process.env.SUPABASE_URL,
-        process.env.SUPABASE_KEY
+        process.env.SUPABASE_KEY,
+        { global: { fetch: (url, opts = {}) => fetch(url, { ...opts, signal: AbortSignal.timeout(8000) }) } }
     );
     return _supabase;
 }
@@ -78,7 +78,6 @@ function validateNome(nome) {
 // EMAIL via Gmail + Nodemailer
 // ═══════════════════════════════════════════════════════════
 
-// Transporter reutilizável (cria uma vez, mantém conexão)
 let _transporter = null;
 function getTransporter() {
     if (!_transporter) {
@@ -86,7 +85,7 @@ function getTransporter() {
             service: 'gmail',
             auth: {
                 user: process.env.GMAIL_USER,
-                pass: process.env.GMAIL_PASS, // senha de app (16 chars)
+                pass: process.env.GMAIL_PASS,
             },
         });
     }
@@ -95,7 +94,6 @@ function getTransporter() {
 
 async function sendConfirmationEmail(email, nome, pin) {
     const primeiroNome = nome.split(' ')[0];
-
     await getTransporter().sendMail({
         from:    `"K11 OMNI ELITE" <${process.env.GMAIL_USER}>`,
         to:      email,
@@ -109,18 +107,12 @@ async function sendConfirmationEmail(email, nome, pin) {
     <tr><td align="center" style="padding:40px 20px;">
       <table width="420" cellpadding="0" cellspacing="0"
              style="background:#14171F;border-radius:16px;border:1px solid #2D3748;overflow:hidden;">
-        <!-- Header -->
         <tr>
           <td style="background:linear-gradient(135deg,#FF8C00,#E06000);padding:28px 32px;">
-            <div style="font-size:11px;font-weight:800;letter-spacing:3px;color:#000;text-transform:uppercase;">
-              K11 OMNI ELITE
-            </div>
-            <div style="font-size:22px;font-weight:900;color:#000;margin-top:4px;">
-              Confirme seu cadastro
-            </div>
+            <div style="font-size:11px;font-weight:800;letter-spacing:3px;color:#000;text-transform:uppercase;">K11 OMNI ELITE</div>
+            <div style="font-size:22px;font-weight:900;color:#000;margin-top:4px;">Confirme seu cadastro</div>
           </td>
         </tr>
-        <!-- Body -->
         <tr>
           <td style="padding:32px;">
             <p style="color:#9CA3AF;font-size:14px;margin:0 0 8px;">
@@ -130,29 +122,18 @@ async function sendConfirmationEmail(email, nome, pin) {
               Use o código abaixo para confirmar seu cadastro no K11 OMNI.
               Ele expira em <strong style="color:#F3F4F6;">15 minutos</strong>.
             </p>
-            <!-- PIN Box -->
-            <div style="background:#090A0F;border:2px solid #FF8C00;border-radius:12px;
-                        padding:24px;text-align:center;margin-bottom:28px;">
-              <div style="font-size:11px;letter-spacing:3px;color:#9CA3AF;margin-bottom:8px;">
-                CÓDIGO DE CONFIRMAÇÃO
-              </div>
-              <div style="font-size:42px;font-weight:900;letter-spacing:12px;
-                          color:#FF8C00;font-family:monospace;">
-                ${pin}
-              </div>
+            <div style="background:#090A0F;border:2px solid #FF8C00;border-radius:12px;padding:24px;text-align:center;margin-bottom:28px;">
+              <div style="font-size:11px;letter-spacing:3px;color:#9CA3AF;margin-bottom:8px;">CÓDIGO DE CONFIRMAÇÃO</div>
+              <div style="font-size:42px;font-weight:900;letter-spacing:12px;color:#FF8C00;font-family:monospace;">${pin}</div>
             </div>
             <p style="color:#6B7280;font-size:12px;margin:0;line-height:1.6;">
-              Se você não solicitou este cadastro, ignore este email.<br>
-              Nenhuma ação é necessária.
+              Se você não solicitou este cadastro, ignore este email.
             </p>
           </td>
         </tr>
-        <!-- Footer -->
         <tr>
           <td style="padding:16px 32px;border-top:1px solid #2D3748;">
-            <p style="color:#4B5563;font-size:11px;margin:0;text-align:center;">
-              K11 OMNI ELITE · Obramax · Duque de Caxias, RJ
-            </p>
+            <p style="color:#4B5563;font-size:11px;margin:0;text-align:center;">K11 OMNI ELITE · Obramax · Duque de Caxias, RJ</p>
           </td>
         </tr>
       </table>
@@ -209,11 +190,9 @@ async function registerHandler(req, res) {
             return res.status(409).json({ ok: false, field: 'email', error: 'Email já cadastrado.' });
         }
 
-        // Limpa registros pendentes antigos do mesmo LDAP/email
-        await supabase
-            .from('pending_registrations')
-            .delete()
-            .or(`ldap.eq.${ldap.trim()},email.eq.${email.trim().toLowerCase()}`);
+        // Limpa registros pendentes antigos do mesmo LDAP/email (duas queries separadas)
+        await supabase.from('pending_registrations').delete().eq('ldap', ldap.trim());
+        await supabase.from('pending_registrations').delete().eq('email', email.trim().toLowerCase());
 
         // Gera PIN de 6 dígitos
         const confirmPin = String(crypto.randomInt(100000, 999999));
@@ -256,7 +235,7 @@ async function registerHandler(req, res) {
     } catch (err) {
         console.error('[REGISTER]', err.message);
 
-        if (err.message?.includes('Gmail') || err.message?.includes('EAUTH') || err.message?.includes('535')) {
+        if (err.message?.includes('ECONNECTION') || err.message?.includes('EAUTH') || err.message?.includes('535')) {
             return res.status(502).json({ ok: false, error: 'Falha ao enviar email. Verifique as credenciais Gmail.' });
         }
 
