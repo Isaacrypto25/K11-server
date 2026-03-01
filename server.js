@@ -206,13 +206,9 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
   logger.info('BOOT', `Status:   http://localhost:${PORT}/api/status`);
   logger.info('BOOT', '────────────────────────────────────────');
   
-  // Pré-carrega todos os datasets na inicialização
-  logger.info('BOOT', 'Carregando datasets...');
-  const all = await datastore.getAll();
-  const totals = Object.entries(all)
-    .map(([k, v]) => `${k}:${v.length}`)
-    .join(' | ');
-  logger.info('BOOT', `Datasets carregados → ${totals}`);
+  // Aquece cache em background — não bloqueia o servidor
+  logger.info('BOOT', 'Aquecendo cache em background (não bloqueante)...');
+  datastore.warmup();
   
   // Health check automático ao iniciar (se IA disponível)
   if (process.env.GROQ_API_KEY?.startsWith('gsk_')) {
