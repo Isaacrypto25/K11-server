@@ -186,6 +186,71 @@ async function sendConfirmationEmail(email, nome, pin) {
 }
 
 
+async function sendResetEmail(email, nome, pin) {
+    const primeiroNome = nome.split(' ')[0];
+    const from    = process.env.GMAIL_USER;
+    const subject = `${pin} é seu código de recuperação — K11 OMNI`;
+    const html = `<!DOCTYPE html>
+<html lang="pt-br">
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#090A0F;font-family:'Inter',sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0">
+    <tr><td align="center" style="padding:40px 20px;">
+      <table width="420" cellpadding="0" cellspacing="0"
+             style="background:#14171F;border-radius:16px;border:1px solid #2D3748;overflow:hidden;">
+        <tr>
+          <td style="background:linear-gradient(135deg,#3B82F6,#1D4ED8);padding:28px 32px;">
+            <div style="font-size:11px;font-weight:800;letter-spacing:3px;color:#fff;text-transform:uppercase;">K11 OMNI ELITE</div>
+            <div style="font-size:22px;font-weight:900;color:#fff;margin-top:4px;">Recuperar senha</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px;">
+            <p style="color:#9CA3AF;font-size:14px;margin:0 0 8px;">
+              Olá, <strong style="color:#F3F4F6;">${primeiroNome}</strong>
+            </p>
+            <p style="color:#9CA3AF;font-size:14px;margin:0 0 28px;line-height:1.6;">
+              Use o código abaixo para redefinir sua senha. Ele expira em <strong style="color:#F3F4F6;">15 minutos</strong>.
+            </p>
+            <div style="background:#090A0F;border:2px solid #3B82F6;border-radius:12px;padding:24px;text-align:center;margin-bottom:28px;">
+              <div style="font-size:11px;letter-spacing:3px;color:#9CA3AF;margin-bottom:8px;">CÓDIGO DE RECUPERAÇÃO</div>
+              <div style="font-size:42px;font-weight:900;letter-spacing:12px;color:#3B82F6;font-family:monospace;">${pin}</div>
+            </div>
+            <p style="color:#6B7280;font-size:12px;margin:0;line-height:1.6;">
+              Se você não solicitou a recuperação, ignore este email. Sua senha permanece a mesma.
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 32px;border-top:1px solid #2D3748;">
+            <p style="color:#4B5563;font-size:11px;margin:0;text-align:center;">K11 OMNI ELITE · Obramax · Duque de Caxias, RJ</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+    const raw = buildRawEmail(email, subject, html, from);
+    const accessToken = await getAccessToken();
+
+    const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ raw }),
+    });
+
+    if (!r.ok) {
+        const err = await r.text();
+        throw new Error(`Gmail API error ${r.status}: ${err}`);
+    }
+}
+
+
 async function registerHandler(req, res) {
     const { ldap, nome, email, senha } = req.body || {};
 
@@ -426,4 +491,144 @@ async function resendPinHandler(req, res) {
     }
 }
 
-module.exports = { registerHandler, confirmPinHandler, resendPinHandler };
+// ═══════════════════════════════════════════════════════════
+// ROTA: POST /api/auth/forgot-password
+// Etapa 1 — valida LDAP + email, envia código de reset
+// ═══════════════════════════════════════════════════════════
+
+async function forgotPasswordHandler(req, res) {
+    const { ldap, email } = req.body || {};
+
+    if (!ldap || !email) {
+        return res.status(400).json({ ok: false, error: 'LDAP e email são obrigatórios.' });
+    }
+
+    const supabase = getSupabase();
+
+    try {
+        // Verifica se LDAP + email batem em k11_users
+        const { data: usuario } = await supabase
+            .from('k11_users')
+            .select('ldap, nome, email, ativo')
+            .eq('ldap', String(ldap).trim())
+            .eq('email', String(email).trim().toLowerCase())
+            .eq('ativo', true)
+            .maybeSingle();
+
+        // Resposta genérica — não revela se LDAP/email existem
+        if (!usuario) {
+            return res.json({ ok: true, msg: 'Se os dados estiverem corretos, você receberá um código por email.' });
+        }
+
+        // Gera código de reset (6 dígitos)
+        const resetPin  = String(crypto.randomInt(100000, 999999));
+        const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+
+        // Salva em pending_registrations reutilizando a tabela (com flag reset)
+        await supabase.from('pending_registrations').delete().eq('ldap', usuario.ldap);
+        await supabase.from('pending_registrations').insert({
+            ldap:        usuario.ldap,
+            nome:        usuario.nome,
+            email:       usuario.email,
+            pin_hash:    'reset_placeholder',
+            confirm_pin: resetPin,
+            expires_at:  expiresAt,
+        });
+
+        // Envia email com código
+        await sendResetEmail(usuario.email, usuario.nome, resetPin);
+
+        // Audit log
+        supabase.from('audit_log').insert({
+            action: 'PASSWORD_RESET_REQUESTED',
+            meta:   { ldap: usuario.ldap },
+            ip:     req.ip || 'desconhecido',
+        }).then(() => {}).catch(() => {});
+
+        return res.json({ ok: true, msg: 'Se os dados estiverem corretos, você receberá um código por email.' });
+
+    } catch (err) {
+        console.error('[FORGOT-PASSWORD]', err.message);
+        return res.status(500).json({ ok: false, error: 'Erro interno. Tente novamente.' });
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+// ROTA: POST /api/auth/reset-password
+// Etapa 2 — valida código e define nova senha
+// ═══════════════════════════════════════════════════════════
+
+async function resetPasswordHandler(req, res) {
+    const { ldap, pin, novaSenha } = req.body || {};
+
+    if (!ldap || !pin || !novaSenha) {
+        return res.status(400).json({ ok: false, error: 'LDAP, código e nova senha são obrigatórios.' });
+    }
+
+    const erroSenha = validatePassword(novaSenha);
+    if (erroSenha) return res.status(400).json({ ok: false, field: 'novaSenha', error: erroSenha });
+
+    const supabase = getSupabase();
+
+    try {
+        const { data: pending } = await supabase
+            .from('pending_registrations')
+            .select('*')
+            .eq('ldap', String(ldap).trim())
+            .maybeSingle();
+
+        if (!pending) {
+            return res.status(404).json({ ok: false, error: 'Código não encontrado. Solicite um novo.' });
+        }
+
+        if (new Date(pending.expires_at) < new Date()) {
+            await supabase.from('pending_registrations').delete().eq('ldap', pending.ldap);
+            return res.status(410).json({ ok: false, error: 'Código expirado. Solicite um novo.' });
+        }
+
+        if (pending.tentativas >= 5) {
+            await supabase.from('pending_registrations').delete().eq('ldap', pending.ldap);
+            return res.status(429).json({ ok: false, error: 'Muitas tentativas. Solicite um novo código.' });
+        }
+
+        if (String(pin).trim() !== String(pending.confirm_pin)) {
+            await supabase
+                .from('pending_registrations')
+                .update({ tentativas: pending.tentativas + 1 })
+                .eq('ldap', pending.ldap);
+            const restantes = 4 - pending.tentativas;
+            return res.status(401).json({
+                ok: false,
+                error: `Código incorreto. ${restantes} tentativa(s) restante(s).`,
+            });
+        }
+
+        // Código correto — atualiza senha
+        const novoHash = hashPin(novaSenha);
+        const { error: updateError } = await supabase
+            .from('k11_users')
+            .update({ pin_hash: novoHash, atualizado_em: new Date().toISOString() })
+            .eq('ldap', pending.ldap);
+
+        if (updateError) throw new Error(updateError.message);
+
+        // Remove registro pendente
+        await supabase.from('pending_registrations').delete().eq('ldap', pending.ldap);
+
+        // Audit log
+        supabase.from('audit_log').insert({
+            re:     pending.ldap,
+            action: 'PASSWORD_RESET_CONFIRMED',
+            ip:     req.ip || 'desconhecido',
+        }).then(() => {}).catch(() => {});
+
+        return res.json({ ok: true, msg: 'Senha alterada com sucesso! Faça login com a nova senha.' });
+
+    } catch (err) {
+        console.error('[RESET-PASSWORD]', err.message);
+        return res.status(500).json({ ok: false, error: 'Erro interno. Tente novamente.' });
+    }
+}
+
+
+module.exports = { registerHandler, confirmPinHandler, resendPinHandler, forgotPasswordHandler, resetPasswordHandler };
