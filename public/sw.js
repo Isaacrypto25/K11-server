@@ -90,6 +90,11 @@ self.addEventListener('activate', (event) => {
     ).then(() => {
       console.log('[SW] ✅ Todos os caches limpos. Service Worker ativo.');
       return self.clients.claim();
+    }).then(() => {
+      // Avisa todos os clientes que há uma nova versão disponível
+      self.clients.matchAll({ includeUncontrolled: true, type: 'window' }).then(clients => {
+        clients.forEach(client => client.postMessage({ type: 'SW_UPDATED' }));
+      });
     })
   );
 });
@@ -181,6 +186,14 @@ self.addEventListener('sync', (event) => {
   if (event.tag === 'k11-sync-tarefas') {
     console.log('[SW] Background sync: tarefas');
     // Implementar quando necessário
+  }
+});
+
+// ── SKIP WAITING — ativado pelo botão de atualizar no app ─────
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    console.log('[SW] SKIP_WAITING recebido. Ativando imediatamente...');
+    self.skipWaiting();
   }
 });
 
