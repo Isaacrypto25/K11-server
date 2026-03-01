@@ -20,7 +20,7 @@
 const crypto = require('crypto');
 const https  = require('https');
 const { createClient } = require('@supabase/supabase-js');
-const { signJWT, hashPin } = require('./server-auth');
+const { signJWT, hashPin } = require('./server-auth.js');
 
 // ── Supabase ──────────────────────────────────────────────────
 let _supabase = null;
