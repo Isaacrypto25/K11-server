@@ -243,4 +243,5 @@ module.exports = {
     logoutHandler,
     verifyJWT,
     signJWT,
+    hashPin,
 };
