@@ -19,8 +19,13 @@
 
 const crypto = require('crypto');
 const https  = require('https');
+
+
+// SUBSTITUA POR:
+const path = require('path'); // Adicione esta linha
 const { createClient } = require('@supabase/supabase-js');
-const { signJWT, hashPin } = require('./server-auth.js');
+const { signJWT, hashPin } = require(path.join(__dirname, 'server-auth.js'));
+
 
 // ── Supabase ──────────────────────────────────────────────────
 let _supabase = null;
