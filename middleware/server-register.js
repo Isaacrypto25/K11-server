@@ -20,7 +20,6 @@
 
 const crypto = require('crypto');
 const path = require('path');
-const nodemailer = require('nodemailer');
 const { createClient } = require('@supabase/supabase-js');
 const { signJWT, hashPin } = require(path.join(__dirname, 'server-auth.js'));
 
@@ -76,38 +75,53 @@ function validateNome(nome) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// EMAIL via Gmail + Nodemailer
+// EMAIL via Gmail API REST (HTTPS porta 443 — nunca bloqueada)
+// Variáveis necessárias no Railway:
+//   GMAIL_USER          → k11operacionalos@gmail.com
+//   GMAIL_CLIENT_ID     → client_id do Google Cloud
+//   GMAIL_CLIENT_SECRET → client_secret do Google Cloud
+//   GMAIL_REFRESH_TOKEN → refresh_token do OAuth Playground
 // ═══════════════════════════════════════════════════════════
 
-let _transporter = null;
-function getTransporter() {
-    if (!_transporter) {
-        if (!process.env.GMAIL_USER || !process.env.GMAIL_PASS) {
-            throw new Error('GMAIL_USER ou GMAIL_PASS não configurados.');
-        }
-        _transporter = nodemailer.createTransport({
-            host:   'smtp.gmail.com',
-            port:   465,
-            secure: true,  // SSL na 465 — contorna bloqueio do Railway na 587
-            auth: {
-                user: process.env.GMAIL_USER,
-                pass: process.env.GMAIL_PASS,  // senha de app (16 chars)
-            },
-            connectionTimeout: 15000,
-            greetingTimeout:   10000,
-            socketTimeout:     20000,
-        });
-    }
-    return _transporter;
+async function getAccessToken() {
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+            client_id:     process.env.GMAIL_CLIENT_ID,
+            client_secret: process.env.GMAIL_CLIENT_SECRET,
+            refresh_token: process.env.GMAIL_REFRESH_TOKEN,
+            grant_type:    'refresh_token',
+        }),
+    });
+    const data = await res.json();
+    if (!data.access_token) throw new Error(`OAuth token error: ${JSON.stringify(data)}`);
+    return data.access_token;
+}
+
+function buildRawEmail(to, subject, html, from) {
+    const boundary = 'k11omni_' + Date.now();
+    const msg = [
+        `From: "K11 OMNI ELITE" <${from}>`,
+        `To: ${to}`,
+        `Subject: ${subject}`,
+        'MIME-Version: 1.0',
+        `Content-Type: multipart/alternative; boundary="${boundary}"`,
+        '',
+        `--${boundary}`,
+        'Content-Type: text/html; charset=UTF-8',
+        'Content-Transfer-Encoding: base64',
+        '',
+        Buffer.from(html).toString('base64'),
+        '',
+        `--${boundary}--`,
+    ].join('\r\n');
+    return Buffer.from(msg).toString('base64url');
 }
 
 async function sendConfirmationEmail(email, nome, pin) {
     const primeiroNome = nome.split(' ')[0];
-    await getTransporter().sendMail({
-        from:    `"K11 OMNI ELITE" <${process.env.GMAIL_USER}>`,
-        to:      email,
-        subject: `${pin} é seu código de confirmação — K11 OMNI`,
-        html: `
+    const html = `
 <!DOCTYPE html>
 <html lang="pt-br">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -149,14 +163,28 @@ async function sendConfirmationEmail(email, nome, pin) {
     </td></tr>
   </table>
 </body>
-</html>`,
+</html>`;
+
+    const from       = process.env.GMAIL_USER;
+    const subject    = `${pin} é seu código de confirmação — K11 OMNI`;
+    const raw        = buildRawEmail(email, subject, html, from);
+    const accessToken = await getAccessToken();
+
+    const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ raw }),
     });
+
+    if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`Gmail API error ${res.status}: ${err}`);
+    }
 }
 
-// ═══════════════════════════════════════════════════════════
-// ROTA: POST /api/auth/register
-// Etapa 1 — valida dados, salva pendente, envia email
-// ═══════════════════════════════════════════════════════════
 
 async function registerHandler(req, res) {
     const { ldap, nome, email, senha } = req.body || {};
