@@ -31,10 +31,11 @@ const K11AuthUI = (() => {
         font-family: 'Inter', sans-serif;
         min-height: 100vh;
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         justify-content: center;
-        padding: 20px;
+        padding: 40px 20px;
         overflow-x: hidden;
+        overflow-y: auto;
     }
 
     /* Grid background */
@@ -93,11 +94,11 @@ const K11AuthUI = (() => {
         background: #14171F;
         border: 1px solid #2D3748;
         border-radius: 20px;
-        padding: 28px 24px;
+        padding: 28px 24px 32px;
         box-shadow: 0 24px 64px rgba(0,0,0,0.5);
         animation: fadeUp 0.5s ease both;
         position: relative;
-        overflow: hidden;
+        overflow: visible;
     }
     .auth-card::before {
         content: '';
@@ -417,16 +418,118 @@ const K11AuthUI = (() => {
             <button class="auth-btn" id="btn-login">
                 ENTRAR NO SISTEMA
             </button>
+        </div>
+
+        <div class="auth-links">
+            <button class="auth-link primary" id="link-register">
+                Criar conta
+            </button>
+            <button class="auth-link" id="link-forgot">
+                Esqueci minha senha
+            </button>
+        </div>
+
+        <div id="auth-toast"></div>`;
+    }
+
+    function _renderForgot() {
+        return `
+        <div class="auth-logo">
+            <div class="auth-logo-hex">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 2L3 7v10l9 5 9-5V7L12 2z" stroke="#FF8C00" stroke-width="1.8" stroke-linejoin="round"/>
+                    <path d="M8 10l4 4 4-4" stroke="#FF8C00" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+            </div>
+            <div class="auth-logo-title">OMNI <span>K11</span></div>
+            <div class="auth-logo-sub">Recuperar senha</div>
+        </div>
+
+        <div class="auth-card">
+            <div class="auth-card-title">Recuperar senha</div>
+            <div class="auth-card-sub">Informe seu LDAP e email cadastrado.</div>
+
+            <div class="auth-field">
+                <label class="auth-label">LDAP</label>
+                <div class="auth-input-wrap">
+                    <input id="f-ldap" class="auth-input" type="text"
+                           inputmode="numeric" maxlength="8"
+                           placeholder="73xxxxxx" autocomplete="username">
+                    <span class="auth-input-icon" id="icon-ldap"></span>
+                </div>
+                <div class="auth-field-error" id="err-ldap"></div>
+            </div>
+
+            <div class="auth-field">
+                <label class="auth-label">Email corporativo</label>
+                <div class="auth-input-wrap">
+                    <input id="f-email" class="auth-input" type="email"
+                           placeholder="nome@obramax.com" autocomplete="email">
+                    <span class="auth-input-icon" id="icon-email"></span>
+                </div>
+                <div class="auth-field-error" id="err-email"></div>
+            </div>
+
+            <button class="auth-btn" id="btn-forgot">
+                ENVIAR CÓDIGO
+            </button>
 
             <div class="auth-links">
-                <button class="auth-link primary" id="link-register">
-                    Criar conta
+                <button class="auth-link" id="link-back-login">
+                    Voltar para o login
                 </button>
             </div>
         </div>
 
         <div id="auth-toast"></div>`;
     }
+
+    function _renderResetPin() {
+        return `
+        <div class="auth-logo">
+            <div class="auth-logo-hex">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 2L3 7v10l9 5 9-5V7L12 2z" stroke="#FF8C00" stroke-width="1.8" stroke-linejoin="round"/>
+                    <path d="M8 10l4 4 4-4" stroke="#FF8C00" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+            </div>
+            <div class="auth-logo-title">OMNI <span>K11</span></div>
+            <div class="auth-logo-sub">Confirmar código</div>
+        </div>
+
+        <div class="auth-card">
+            <div class="auth-card-title">Digite o código</div>
+            <div class="auth-card-sub" id="reset-pin-sub">Código enviado para seu email.</div>
+
+            <div class="auth-field">
+                <label class="auth-label">Código de 6 dígitos</label>
+                <div class="auth-pin-row" id="reset-pin-inputs"></div>
+                <div class="auth-field-error" id="err-pin"></div>
+            </div>
+
+            <div class="auth-field">
+                <label class="auth-label">Nova senha</label>
+                <div class="auth-input-wrap">
+                    <input id="f-nova-senha" class="auth-input" type="password"
+                           placeholder="Mínimo 6 caracteres" autocomplete="new-password">
+                </div>
+                <div class="auth-field-error" id="err-nova-senha"></div>
+            </div>
+
+            <button class="auth-btn" id="btn-reset">
+                REDEFINIR SENHA
+            </button>
+
+            <div class="auth-links">
+                <button class="auth-link" id="link-back-login2">
+                    Voltar para o login
+                </button>
+            </div>
+        </div>
+
+        <div id="auth-toast"></div>`;
+    }
+
 
     function _renderRegister() {
         return `
@@ -732,6 +835,8 @@ const K11AuthUI = (() => {
         if (screen === 'confirm')  root.innerHTML = _renderConfirm(
             sessionStorage.getItem('k11_pending_email') || ''
         );
+        if (screen === 'forgot')   root.innerHTML = _renderForgot();
+        if (screen === 'resetpin') root.innerHTML = _renderResetPin();
 
         _bindEvents(screen);
     }
@@ -746,6 +851,8 @@ const K11AuthUI = (() => {
                 ?.addEventListener('click', () => _render('register'));
             document.getElementById('f-senha')
                 ?.addEventListener('keydown', e => { if (e.key === 'Enter') _doLogin(); });
+            document.getElementById('link-forgot')
+                ?.addEventListener('click', () => _render('forgot'));
         }
 
         if (screen === 'register') {
@@ -766,9 +873,134 @@ const K11AuthUI = (() => {
             document.getElementById('btn-back-register')
                 ?.addEventListener('click', () => _render('register'));
         }
+
+        if (screen === 'forgot') {
+            document.getElementById('btn-forgot')
+                ?.addEventListener('click', _doForgot);
+            document.getElementById('link-back-login')
+                ?.addEventListener('click', () => _render('login'));
+        }
+
+        if (screen === 'resetpin') {
+            _setupResetPinInputs();
+            document.getElementById('btn-reset')
+                ?.addEventListener('click', _doReset);
+            document.getElementById('link-back-login2')
+                ?.addEventListener('click', () => _render('login'));
+        }
     }
 
     // ── AÇÕES ─────────────────────────────────────────────────
+
+    async function _doForgot() {
+        _clearErrors();
+        const ldap  = document.getElementById('f-ldap')?.value.trim();
+        const email = document.getElementById('f-email')?.value.trim().toLowerCase();
+
+        const errLdap = _validateLdap(ldap);
+        if (errLdap) { _fieldError('f-ldap', 'err-ldap', errLdap); return; }
+        if (!email)  { _fieldError('f-email', 'err-email', 'Email obrigatório.'); return; }
+
+        _setLoading('btn-forgot', true);
+
+        try {
+            const res  = await fetch(`${K11_SERVER_URL}/api/auth/forgot-password`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ ldap, email }),
+                signal:  AbortSignal.timeout(15000),
+            });
+            const data = await res.json();
+
+            if (!res.ok || !data.ok) {
+                _toast(data.error || 'Erro ao enviar código.', 'danger');
+                _setLoading('btn-forgot', false, 'ENVIAR CÓDIGO');
+                return;
+            }
+
+            // Salva LDAP para usar no reset
+            sessionStorage.setItem('k11_reset_ldap', ldap);
+            _render('resetpin');
+
+        } catch (err) {
+            _toast('Erro de conexão. Tente novamente.', 'danger');
+            _setLoading('btn-forgot', false, 'ENVIAR CÓDIGO');
+        }
+    }
+
+    function _setupResetPinInputs() {
+        const container = document.getElementById('reset-pin-inputs');
+        if (!container) return;
+        container.innerHTML = '';
+        for (let i = 0; i < 6; i++) {
+            const inp = document.createElement('input');
+            inp.type = 'text';
+            inp.inputMode = 'numeric';
+            inp.maxLength = 1;
+            inp.className = 'auth-pin-digit';
+            inp.dataset.idx = i;
+            inp.addEventListener('input', e => {
+                e.target.value = e.target.value.replace(/\D/, '');
+                if (e.target.value && i < 5) container.children[i + 1].focus();
+            });
+            inp.addEventListener('keydown', e => {
+                if (e.key === 'Backspace' && !e.target.value && i > 0)
+                    container.children[i - 1].focus();
+            });
+            container.appendChild(inp);
+        }
+        container.children[0].focus();
+    }
+
+    function _getResetPin() {
+        const container = document.getElementById('reset-pin-inputs');
+        if (!container) return '';
+        return Array.from(container.children).map(i => i.value).join('');
+    }
+
+    async function _doReset() {
+        _clearErrors();
+        const ldap      = sessionStorage.getItem('k11_reset_ldap') || '';
+        const pin       = _getResetPin();
+        const novaSenha = document.getElementById('f-nova-senha')?.value;
+
+        if (pin.length < 6) { _fieldError(null, 'err-pin', 'Digite os 6 dígitos.'); return; }
+        if (!novaSenha || novaSenha.length < 6) {
+            _fieldError('f-nova-senha', 'err-nova-senha', 'Senha deve ter pelo menos 6 caracteres.');
+            return;
+        }
+
+        _setLoading('btn-reset', true);
+
+        try {
+            const res  = await fetch(`${K11_SERVER_URL}/api/auth/reset-password`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ ldap, pin, novaSenha }),
+                signal:  AbortSignal.timeout(10000),
+            });
+            const data = await res.json();
+
+            if (!res.ok || !data.ok) {
+                if (data.field === 'novaSenha') {
+                    _fieldError('f-nova-senha', 'err-nova-senha', data.error);
+                } else {
+                    _fieldError(null, 'err-pin', data.error || 'Código incorreto.');
+                }
+                _setLoading('btn-reset', false, 'REDEFINIR SENHA');
+                return;
+            }
+
+            sessionStorage.removeItem('k11_reset_ldap');
+            _toast('Senha alterada com sucesso!', 'success');
+            setTimeout(() => _render('login'), 1800);
+
+        } catch (err) {
+            _toast('Erro de conexão. Tente novamente.', 'danger');
+            _setLoading('btn-reset', false, 'REDEFINIR SENHA');
+        }
+    }
+
 
     async function _doLogin() {
         _clearErrors();
@@ -977,7 +1209,7 @@ const K11AuthUI = (() => {
         }
     }
 
-    return { init };
+    return { init, showForgot: () => _render('forgot') };
 
 })();
 
