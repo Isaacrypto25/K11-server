@@ -521,3 +521,63 @@ window.APP = APP;
 window.addEventListener('load', () => {
     if (document.getElementById('engine-status')) APP.init();
 });
+
+// ── SERVICE WORKER: Auto-reload + botão de atualizar ─────────
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').then(reg => {
+
+        // 1️⃣ AUTO-RELOAD: recebe mensagem do SW quando há nova versão
+        navigator.serviceWorker.addEventListener('message', event => {
+            if (event.data?.type === 'SW_UPDATED') {
+                console.log('[K11 PWA] Nova versão detectada. Recarregando...');
+                window.location.reload();
+            }
+        });
+
+        // 2️⃣ BOTÃO DE ATUALIZAR: aparece quando há update pendente (waiting)
+        reg.addEventListener('updatefound', () => {
+            const newWorker = reg.installing;
+            newWorker?.addEventListener('statechange', () => {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    _mostrarBotaoAtualizar(reg);
+                }
+            });
+        });
+
+        // Verifica update ao abrir o app
+        reg.update().catch(() => {});
+
+    }).catch(err => console.warn('[K11 SW] Registro falhou:', err));
+}
+
+function _mostrarBotaoAtualizar(reg) {
+    const existente = document.getElementById('k11-update-btn');
+    if (existente) return;
+
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes k11-pulse {
+            0%, 100% { box-shadow: 0 4px 20px rgba(34,197,94,0.4); }
+            50%       { box-shadow: 0 4px 30px rgba(34,197,94,0.8); }
+        }
+    `;
+    document.head.appendChild(style);
+
+    const btn = document.createElement('button');
+    btn.id = 'k11-update-btn';
+    btn.innerHTML = '🔄 Nova versão disponível — Toque para atualizar';
+    btn.style.cssText = `
+        position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+        background: #22c55e; color: #000; font-weight: 700; font-size: 13px;
+        padding: 10px 20px; border-radius: 999px; border: none; z-index: 9999;
+        cursor: pointer; box-shadow: 0 4px 20px rgba(34,197,94,0.4);
+        white-space: nowrap; animation: k11-pulse 2s infinite;
+    `;
+    document.body.appendChild(btn);
+
+    btn.addEventListener('click', () => {
+        btn.innerHTML = '⏳ Atualizando...';
+        reg.waiting?.postMessage({ type: 'SKIP_WAITING' });
+        setTimeout(() => window.location.reload(), 300);
+    });
+}
