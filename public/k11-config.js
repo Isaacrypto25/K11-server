@@ -27,9 +27,7 @@ const K11_SERVER_URL = 'https://web-production-8c4b.up.railway.app';
 const K11_GOOGLE_TTS_VOICE = 'pt-BR-Neural2-C';
 
 // ─── GROQ AI ──────────────────────────────────────────────────
-// A chave Groq foi movida para variável de ambiente GROQ_API_KEY no Railway
-// O frontend chama /api/ai/chat e o servidor usa a chave internamente
-// K11Setup ainda permite que o usuário informe a própria chave como fallback
+const K11_GROQ_API_KEY = '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';
 
 // ─── REGRAS DE CAPACIDADE DO PKL ──────────────────────────────
 const REGRAS_CAPACIDADE = {
