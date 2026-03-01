@@ -7,9 +7,9 @@
 
 'use strict';
 
-const CACHE_NAME    = 'k11-omni-v2';
-const CACHE_STATIC  = 'k11-static-v2';
-const CACHE_DYNAMIC = 'k11-dynamic-v2';
+const CACHE_NAME    = 'k11-omni-v3';
+const CACHE_STATIC  = 'k11-static-v3';
+const CACHE_DYNAMIC = 'k11-dynamic-v3';
 
 // ── Assets que entram no cache imediatamente ao instalar ──────
 const STATIC_ASSETS = [
@@ -123,19 +123,19 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2️⃣ Assets estáticos — Cache First, fallback Network
+  // 2️⃣ Assets estáticos — Network First, cache como fallback
+  // (garante que atualizações de JS/CSS chegam imediatamente)
   if (isStaticAsset(url)) {
     event.respondWith(
-      caches.match(request).then(cached => {
-        if (cached) return cached;
-        return fetch(request).then(response => {
+      fetch(request)
+        .then(response => {
           if (response.ok) {
             const clone = response.clone();
             caches.open(CACHE_STATIC).then(c => c.put(request, clone));
           }
           return response;
-        });
-      })
+        })
+        .catch(() => caches.match(request))
     );
     return;
   }
