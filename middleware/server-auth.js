@@ -146,8 +146,8 @@ async function loginHandler(req, res) {
         // Busca usuário ativo no Supabase
         const { data: usuario, error } = await supabase
             .from('k11_users')
-            .select('re, nome, role, pin_hash, ativo')
-            .eq('re', String(re).trim())
+            .select('ldap, nome, role, pin_hash, ativo')
+            .eq('ldap', String(re).trim())
             .eq('ativo', true)
             .single();
 
@@ -168,7 +168,7 @@ async function loginHandler(req, res) {
 
         // Gera JWT com 8h de validade
         const token = signJWT({
-            re:   usuario.re,
+            re:   usuario.ldap,
             nome: usuario.nome,
             role: usuario.role,
         });
@@ -177,14 +177,14 @@ async function loginHandler(req, res) {
         supabase
             .from('k11_users')
             .update({ ultimo_login: new Date().toISOString() })
-            .eq('re', usuario.re)
+            .eq('ldap', usuario.ldap)
             .then(() => {}).catch(() => {});
 
         // Registra no audit_log (fire and forget)
         supabase
             .from('audit_log')
             .insert({
-                re:     usuario.re,
+                re:     usuario.ldap,
                 role:   usuario.role,
                 action: 'LOGIN',
                 ip:     req.ip || req.headers['x-forwarded-for'] || 'desconhecido',
