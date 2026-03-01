@@ -29,11 +29,12 @@ const { signJWT, hashPin } = require(path.join(__dirname, 'server-auth.js'));
 // ── Supabase ──────────────────────────────────────────────────
 let _supabase = null;
 function getSupabase() {
-    if (!_supabase) _supabase = createClient(
-        process.env.SUPABASE_URL,
-        process.env.SUPABASE_KEY,
-        { global: { fetch: (url, opts = {}) => fetch(url, { ...opts, signal: AbortSignal.timeout(8000) }) } }
-    );
+    if (!_supabase) {
+        const url = (process.env.SUPABASE_URL || '').trim();
+        const key = (process.env.SUPABASE_KEY || '').trim();
+        if (!url || !key) throw new Error('SUPABASE_URL ou SUPABASE_KEY não configurados.');
+        _supabase = createClient(url, key);
+    }
     return _supabase;
 }
 

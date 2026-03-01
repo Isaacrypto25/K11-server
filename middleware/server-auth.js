@@ -52,10 +52,10 @@ function verifyPin(pin, storedHash) {
 let _supabase = null;
 function getSupabase() {
     if (!_supabase) {
-        _supabase = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_KEY
-        );
+        const url = (process.env.SUPABASE_URL || '').trim();
+        const key = (process.env.SUPABASE_KEY || '').trim();
+        if (!url || !key) throw new Error('SUPABASE_URL ou SUPABASE_KEY não configurados.');
+        _supabase = createClient(url, key);
     }
     return _supabase;
 }
@@ -243,5 +243,4 @@ module.exports = {
     logoutHandler,
     verifyJWT,
     signJWT,
-    hashPin,
 };
