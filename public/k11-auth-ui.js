@@ -215,6 +215,34 @@ const K11AuthUI = (() => {
     }
     .pin-digit.filled { border-color: rgba(255,140,0,0.4); }
 
+    /* ── PIN row do reset de senha ──────────────────────────── */
+    .auth-pin-row {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+        margin: 8px 0;
+    }
+    .auth-pin-digit {
+        width: 46px; height: 56px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid #2D3748;
+        border-radius: 10px;
+        font-size: 24px;
+        font-weight: 800;
+        color: #FF8C00;
+        text-align: center;
+        outline: none;
+        caret-color: #FF8C00;
+        font-family: 'JetBrains Mono', monospace;
+        transition: border-color 0.2s, box-shadow 0.2s;
+        -webkit-appearance: none;
+        flex-shrink: 0;
+    }
+    .auth-pin-digit:focus {
+        border-color: rgba(255,140,0,0.6);
+        box-shadow: 0 0 0 3px rgba(255,140,0,0.1);
+    }
+
     /* ── Botão principal ────────────────────────────────────── */
     .auth-btn {
         width: 100%;
