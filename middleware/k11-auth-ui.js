@@ -93,11 +93,11 @@ const K11AuthUI = (() => {
         background: #14171F;
         border: 1px solid #2D3748;
         border-radius: 20px;
-        padding: 28px 24px;
+        padding: 28px 24px 32px;
         box-shadow: 0 24px 64px rgba(0,0,0,0.5);
         animation: fadeUp 0.5s ease both;
         position: relative;
-        overflow: hidden;
+        overflow: visible;
     }
     .auth-card::before {
         content: '';
@@ -417,15 +417,15 @@ const K11AuthUI = (() => {
             <button class="auth-btn" id="btn-login">
                 ENTRAR NO SISTEMA
             </button>
+        </div>
 
-            <div class="auth-links">
-                <button class="auth-link primary" id="link-register">
-                    Criar conta
-                </button>
-                <button class="auth-link" id="link-forgot">
-                    Esqueci minha senha
-                </button>
-            </div>
+        <div class="auth-links">
+            <button class="auth-link primary" id="link-register">
+                Criar conta
+            </button>
+            <button class="auth-link" id="link-forgot">
+                Esqueci minha senha
+            </button>
         </div>
 
         <div id="auth-toast"></div>`;
