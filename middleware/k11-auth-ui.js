@@ -30,12 +30,12 @@ const K11AuthUI = (() => {
         color: #F3F4F6;
         font-family: 'Inter', sans-serif;
         min-height: 100vh;
-        display: flex;
-        align-items: flex-start;
-        justify-content: center;
+        min-height: -webkit-fill-available;
+        display: block;
         padding: 40px 20px;
         overflow-x: hidden;
         overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
     }
 
     /* Grid background */
@@ -55,6 +55,7 @@ const K11AuthUI = (() => {
         z-index: 1;
         width: 100%;
         max-width: 400px;
+        margin: 0 auto;
     }
 
     /* ── Logo ───────────────────────────────────────────────── */
