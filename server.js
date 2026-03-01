@@ -7,18 +7,18 @@
  * Stack: Node.js · Express · SQLite · Groq AI
  *
  * Endpoints:
- *   GET  /health                  → status rápido (sem auth)
- *   GET  /api/status              → status público básico
- *   GET  /api/data/all            → todos os datasets
- *   GET  /api/data/:dataset       → dataset específico
- *   PUT  /api/data/:dataset/:id   → atualiza item
- *   GET  /api/system/status       → métricas completas do servidor
- *   GET  /api/system/logs         → logs recentes
- *   GET  /api/system/stream       → SSE: stream de logs em tempo real
- *   POST /api/system/log          → injeta log do front-end
- *   GET  /api/ai/health           → análise IA do sistema
- *   POST /api/ai/chat             → chat com supervisor de IA
- *   GET  /api/ai/score            → health score atual
+ * GET  /health                  → status rápido (sem auth)
+ * GET  /api/status              → status público básico
+ * GET  /api/data/all            → todos os datasets
+ * GET  /api/data/:dataset       → dataset específico
+ * PUT  /api/data/:dataset/:id   → atualiza item
+ * GET  /api/system/status       → métricas completas do servidor
+ * GET  /api/system/logs         → logs recentes
+ * GET  /api/system/stream       → SSE: stream de logs em tempo real
+ * POST /api/system/log          → injeta log do front-end
+ * GET  /api/ai/health           → análise IA do sistema
+ * POST /api/ai/chat             → chat com supervisor de IA
+ * GET  /api/ai/score            → health score atual
  */
 
 'use strict';
@@ -39,9 +39,9 @@ const logger = require('./services/logger');
 const datastore = require('./services/datastore');
 const supervisor = require('./services/ai-supervisor');
 
-// ── MIDDLEWARE ────────────────────────────────────────────────
+// ── MIDDLEWARE E AUTH ─────────────────────────────────────────
 const auth = require('./middleware/server-auth');
-
+const register = require('./middleware/server-register');
 const requestTracker = require('./middleware/request-tracker');
 
 // ── ROTAS ─────────────────────────────────────────────────────
@@ -119,24 +119,22 @@ app.use(morgan((tokens, req, res) => {
 // ── REQUEST TRACKER ───────────────────────────────────────────
 app.use(requestTracker);
 
-// ── AUTH ──────────────────────────────────────────────────────
-
-app.use('/api/data',   auth.requireAuth, dataRoutes);
-app.use('/api/system', auth.requireAuth, systemRoutes);
-app.use('/api/ai',     auth.requireAuth, aiRoutes);
-
 
 // ─────────────────────────────────────────────────────────────
-// ROTAS PÚBLICAS (sem auth)
+// ROTAS DE AUTENTICAÇÃO E REGISTRO
 // ─────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────
-// ROTAS DE AUTENTICAÇÃO (Novas)
-// ─────────────────────────────────────────────────────────────
-app.post('/api/auth/login',   auth.loginHandler);
+app.post('/api/auth/login',       auth.loginHandler);
+app.post('/api/auth/register',    register.registerHandler);
+app.post('/api/auth/confirm-pin', register.confirmPinHandler);
+app.post('/api/auth/resend-pin',  register.resendPinHandler);
+
 app.post('/api/auth/refresh', auth.requireAuth, auth.refreshHandler);
 app.post('/api/auth/logout',  auth.requireAuth, auth.logoutHandler);
 
 
+// ─────────────────────────────────────────────────────────────
+// ROTAS PÚBLICAS (Sem auth)
+// ─────────────────────────────────────────────────────────────
 // Healthcheck mínimo para Railway/Render/UptimeRobot
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', ts: new Date().toISOString() });
@@ -154,18 +152,18 @@ app.get('/api/status', (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// ROTAS PROTEGIDAS
+// ROTAS PROTEGIDAS (Exigem Header: Authorization: Bearer <token>)
 // ─────────────────────────────────────────────────────────────
-app.use('/api/data', dataRoutes);
-app.use('/api/system', systemRoutes);
-app.use('/api/ai', aiRoutes);
+app.use('/api/data',   auth.requireAuth, dataRoutes);
+app.use('/api/system', auth.requireAuth, systemRoutes);
+app.use('/api/ai',     auth.requireAuth, aiRoutes);
 
-// Serve arquivos estáticos do front-end (opcional)
-// Descomente se quiser servir o HTML pelo mesmo servidor:
-// app.use(express.static(path.join(__dirname, 'public')));
+
+// ─────────────────────────────────────────────────────────────
+// ARQUIVOS ESTÁTICOS E 404
+// ─────────────────────────────────────────────────────────────
 app.use(express.static('public'));
 
-// ── 404 ───────────────────────────────────────────────────────
 app.use((req, res) => {
   logger.warn('HTTP', `404: ${req.method} ${req.path}`);
   res.status(404).json({
@@ -176,14 +174,11 @@ app.use((req, res) => {
       'GET  /health',
       'GET  /api/status',
       'GET  /api/data/all',
-      'GET  /api/data/:dataset',
       'GET  /api/system/status',
-      'GET  /api/system/logs',
-      'GET  /api/system/stream  (SSE)',
-      'POST /api/system/log',
+      'POST /api/auth/login',
+      'POST /api/auth/register',
       'GET  /api/ai/health',
       'POST /api/ai/chat',
-      'GET  /api/ai/score',
     ],
   });
 });
