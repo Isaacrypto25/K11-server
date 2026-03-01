@@ -3,8 +3,10 @@
  * ════════════════════════════════════════════
  * Rotas de auto-cadastro com validação Obramax + email de confirmação.
  *
- * ── VARIÁVEL DE AMBIENTE NECESSÁRIA (Railway Variables) ───────
- *   RESEND_API_KEY  → re_xxxxxxxxxxxx  (console.resend.com)
+ * ── VARIÁVEIS DE AMBIENTE NECESSÁRIAS (Railway Variables) ────
+ *   GMAIL_USER  → seuemail@gmail.com
+ *   GMAIL_PASS  → senha de app Google (16 chars, não a senha normal)
+ *                 Gerar em: myaccount.google.com → Segurança → Senhas de app
  *
  * ── COMO INTEGRAR NO SEU server.js ───────────────────────────
  *   const register = require('./server-register');
@@ -18,13 +20,11 @@
 'use strict';
 
 const crypto = require('crypto');
-const https  = require('https');
-
-
-// SUBSTITUA POR:
-const path = require('path'); // Adicione esta linha
+const path = require('path');
+const nodemailer = require('nodemailer');
 const { createClient } = require('@supabase/supabase-js');
 const { signJWT, hashPin } = require(path.join(__dirname, 'server-auth.js'));
+
 
 
 // ── Supabase ──────────────────────────────────────────────────
@@ -75,17 +75,32 @@ function validateNome(nome) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// EMAIL via Resend API
+// EMAIL via Gmail + Nodemailer
 // ═══════════════════════════════════════════════════════════
 
-function sendConfirmationEmail(email, nome, pin) {
-    return new Promise((resolve, reject) => {
-        const primeiroNome = nome.split(' ')[0];
-        const body = JSON.stringify({
-            from:    'K11 OMNI <noreply@obramax.com>',
-            to:      [email],
-            subject: `${pin} é seu código de confirmação — K11 OMNI`,
-            html: `
+// Transporter reutilizável (cria uma vez, mantém conexão)
+let _transporter = null;
+function getTransporter() {
+    if (!_transporter) {
+        _transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: process.env.GMAIL_USER,
+                pass: process.env.GMAIL_PASS, // senha de app (16 chars)
+            },
+        });
+    }
+    return _transporter;
+}
+
+async function sendConfirmationEmail(email, nome, pin) {
+    const primeiroNome = nome.split(' ')[0];
+
+    await getTransporter().sendMail({
+        from:    `"K11 OMNI ELITE" <${process.env.GMAIL_USER}>`,
+        to:      email,
+        subject: `${pin} é seu código de confirmação — K11 OMNI`,
+        html: `
 <!DOCTYPE html>
 <html lang="pt-br">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -145,35 +160,6 @@ function sendConfirmationEmail(email, nome, pin) {
   </table>
 </body>
 </html>`,
-        });
-
-        const options = {
-            hostname: 'api.resend.com',
-            path:     '/emails',
-            method:   'POST',
-            headers: {
-                'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-                'Content-Type':  'application/json',
-                'Content-Length': Buffer.byteLength(body),
-            },
-        };
-
-        const req = https.request(options, (res) => {
-            let data = '';
-            res.on('data', chunk => data += chunk);
-            res.on('end', () => {
-                if (res.statusCode >= 200 && res.statusCode < 300) {
-                    resolve(true);
-                } else {
-                    console.error('[RESEND] Erro:', res.statusCode, data);
-                    reject(new Error(`Resend HTTP ${res.statusCode}`));
-                }
-            });
-        });
-
-        req.on('error', reject);
-        req.write(body);
-        req.end();
     });
 }
 
@@ -270,8 +256,8 @@ async function registerHandler(req, res) {
     } catch (err) {
         console.error('[REGISTER]', err.message);
 
-        if (err.message?.includes('Resend')) {
-            return res.status(502).json({ ok: false, error: 'Falha ao enviar email. Verifique o endereço.' });
+        if (err.message?.includes('Gmail') || err.message?.includes('EAUTH') || err.message?.includes('535')) {
+            return res.status(502).json({ ok: false, error: 'Falha ao enviar email. Verifique as credenciais Gmail.' });
         }
 
         return res.status(500).json({ ok: false, error: 'Erro interno. Tente novamente.' });
