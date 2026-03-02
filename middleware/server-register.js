@@ -50,7 +50,7 @@ function validateLdap(ldap) {
 
 function validateEmail(email, nome) {
     const s = String(email || '').trim().toLowerCase();
-    if (!s.endsWith('@obramax.com'))  return 'Email deve ser @obramax.com.';
+    if (!s.endsWith('@obramax.com.br'))  return 'Email deve ser @obramax.com.br.';
     const local = s.split('@')[0];
     if (!local)                       return 'Email inválido.';
     // Primeira letra do email deve ser a primeira letra do primeiro nome
