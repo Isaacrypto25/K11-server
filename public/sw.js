@@ -7,9 +7,9 @@
 
 'use strict';
 
-const CACHE_NAME    = 'k11-omni-v5';
-const CACHE_STATIC  = 'k11-static-v5';
-const CACHE_DYNAMIC = 'k11-dynamic-v5';
+const CACHE_NAME    = 'k11-omni-v6';
+const CACHE_STATIC  = 'k11-static-v6';
+const CACHE_DYNAMIC = 'k11-dynamic-v6';
 
 // ── Assets que entram no cache imediatamente ao instalar ──────
 const STATIC_ASSETS = [
@@ -32,6 +32,7 @@ const STATIC_ASSETS = [
   '/k11-brain-auxiliar.js',
   '/k11-voice-assistant.js',
   '/k11-float-ai.js',
+  '/k11-live-engine.js',
   '/k11-setup.js',
   '/manifest.json',
   '/icons/icon-192.png',
@@ -90,11 +91,6 @@ self.addEventListener('activate', (event) => {
     ).then(() => {
       console.log('[SW] ✅ Todos os caches limpos. Service Worker ativo.');
       return self.clients.claim();
-    }).then(() => {
-      // Avisa todos os clientes que há uma nova versão disponível
-      self.clients.matchAll({ includeUncontrolled: true, type: 'window' }).then(clients => {
-        clients.forEach(client => client.postMessage({ type: 'SW_UPDATED' }));
-      });
     })
   );
 });
@@ -186,14 +182,6 @@ self.addEventListener('sync', (event) => {
   if (event.tag === 'k11-sync-tarefas') {
     console.log('[SW] Background sync: tarefas');
     // Implementar quando necessário
-  }
-});
-
-// ── SKIP WAITING — ativado pelo botão de atualizar no app ─────
-self.addEventListener('message', (event) => {
-  if (event.data?.type === 'SKIP_WAITING') {
-    console.log('[SW] SKIP_WAITING recebido. Ativando imediatamente...');
-    self.skipWaiting();
   }
 });
 

@@ -1,7 +1,7 @@
 /**
  * K11 OMNI ELITE — APP CORE (Bootstrap & Navegação)
  * ════════════════════════════════════════════════════
- * v3.0 — Autenticação JWT via servidor Railway
+ * v3.1 — Autenticação JWT via servidor Railway
  *
  * Mudanças de segurança vs v2.0:
  * - Login agora valida no SERVIDOR (não mais no frontend)
@@ -110,7 +110,6 @@ const APP = {
                 const data = await res.json();
 
                 if (!res.ok || !data.ok) {
-                    // Credencial errada — servidor retornou erro
                     [reEl, passEl].forEach(el => {
                         el?.classList.add('shake-error');
                         setTimeout(() => el?.classList.remove('shake-error'), 500);
@@ -345,7 +344,7 @@ const APP = {
 
             if (APP._warnNoServer) APP._showNoServerWarning();
 
-            // Dispara evento k11:ready para PWA deep links
+            // Dispara evento k11:ready para o K11Live e PWA deep links
             window.dispatchEvent(new Event('k11:ready'));
 
             APP._serverLog('info', 'FRONTEND', 'K11 OMNI carregado com sucesso', {
@@ -377,7 +376,6 @@ const APP = {
                 signal: controller.signal,
                 headers: {
                     'Content-Type':  'application/json',
-                    // JWT em vez de token estático hardcoded
                     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
                     ...(options.headers || {}),
                 },
@@ -487,21 +485,16 @@ const APP = {
 
         try { sessionStorage.setItem('k11_mode', next); } catch {}
 
-        // Atualiza variável global e classe do body
         window.K11_MODE = next;
         document.body.classList.toggle('mode-lite', next === 'lite');
 
-        // Atualiza o badge
         const badgeEl = document.getElementById('mode-badge-header');
         if (badgeEl) {
             badgeEl.className = `mode-badge ${next}`;
             badgeEl.textContent = next === 'lite' ? '⚡ LITE' : '🧠 ULTRA';
         }
 
-        // Ajusta a view padrão
         window._K11_DEFAULT_VIEW = next === 'lite' ? 'estoque' : 'dash';
-
-        // Toast + navega pra view padrão do novo modo
         APP.ui.toast(`Modo ${next.toUpperCase()} ativado`, 'info');
         APP.view(window._K11_DEFAULT_VIEW);
     },
@@ -551,7 +544,7 @@ window.addEventListener('load', () => {
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').then(reg => {
 
-        // 1️⃣ AUTO-RELOAD: recebe mensagem do SW quando há nova versão
+        // AUTO-RELOAD: recebe mensagem do SW quando há nova versão
         navigator.serviceWorker.addEventListener('message', event => {
             if (event.data?.type === 'SW_UPDATED') {
                 console.log('[K11 PWA] Nova versão detectada. Recarregando...');
@@ -559,7 +552,7 @@ if ('serviceWorker' in navigator) {
             }
         });
 
-        // 2️⃣ BOTÃO DE ATUALIZAR: aparece quando há update pendente (waiting)
+        // BOTÃO DE ATUALIZAR: aparece quando há update pendente (waiting)
         reg.addEventListener('updatefound', () => {
             const newWorker = reg.installing;
             newWorker?.addEventListener('statechange', () => {
@@ -569,7 +562,6 @@ if ('serviceWorker' in navigator) {
             });
         });
 
-        // Verifica update ao abrir o app
         reg.update().catch(() => {});
 
     }).catch(err => console.warn('[K11 SW] Registro falhou:', err));
