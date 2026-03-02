@@ -114,7 +114,7 @@ const K11Voice = (() => {
             transition: all .3s; position: relative;
         }
         #${ID.btn}.va .voice-btn-ring {
-            border-color: var(--primary);
+            border-color: v ar(--primary);
             box-shadow: 0 0 14px rgba(255,140,0,.45);
         }
         .voice-btn-ring .material-symbols-outlined { font-size: 18px; }
@@ -346,13 +346,13 @@ const K11Voice = (() => {
     function _updateModeBadge(mode) {
         const el = document.getElementById(ID.mode);
         if (!el) return;
-        const hasGemini = !!_getApiKey();
+        // IA sempre disponível via servidor — badge fixo ✦ K11 AI
         if (mode === 'thinking') {
-            el.textContent = '✦ GEMINI'; el.className = 'thinking';
-        } else if (hasGemini) {
-            el.textContent = '✦ GEMINI'; el.className = '';
-        } else {
+            el.textContent = '✦ K11 AI'; el.className = 'thinking';
+        } else if (mode === 'local') {
             el.textContent = 'LOCAL'; el.className = 'local';
+        } else {
+            el.textContent = '✦ K11 AI'; el.className = '';
         }
     }
 
@@ -547,26 +547,10 @@ const K11Voice = (() => {
             return;
         }
 
-        // ── Camada 3: Gemini AI (linguagem natural + dados reais) ──
-        const apiKey = _getApiKey();
-
-        if (!apiKey) {
-            // Sem chave — retorna fallback local com dica
-            const tid = _addTyping();
-            setTimeout(() => {
-                _removeEl(tid);
-                const hint = localResp + `<br><br>💡 <span style="color:#a78bfa;font-size:11px">Configure o <b>Gemini AI</b> para respostas em linguagem natural — qualquer pergunta.</span>`;
-                _addMsg('k11', hint);
-                _speak(localResp);
-                _updateModeBadge('local');
-            }, 380);
-            return;
-        }
-
-        // Gemini disponível — dispara com contexto
+        // ── Camada 3: K11 AI via servidor (linguagem natural + dados reais) ──
         _updateModeBadge('thinking');
         const tid = _addTyping('gemini');
-        _callGemini(q, apiKey).then(resp => {
+        _callGemini(q, 'server').then(resp => {
             _removeEl(tid);
             if (resp) {
                 // resp pode ser resposta real ou mensagem de erro (429, timeout)
@@ -576,7 +560,7 @@ const K11Voice = (() => {
                 _updateModeBadge(isErrorMsg ? 'local' : null);
             } else {
                 // Gemini retornou null — usa fallback local sem "Não entendi"
-                const fallback = `🤖 Gemini indisponível no momento.<br>Tente: <b>rupturas</b>, <b>estoque</b>, <b>pkl</b>, <b>fila</b>, <b>duelo</b> ou digite um <b>SKU numérico</b>.`;
+                const fallback = `🤖 K11 AI indisponível no momento.<br>Tente: <b>rupturas</b>, <b>estoque</b>, <b>pkl</b>, <b>fila</b>, <b>duelo</b> ou digite um <b>SKU numérico</b>.`;
                 _addMsg('k11', fallback, 'local');
                 _updateModeBadge('local');
             }
@@ -608,7 +592,7 @@ const K11Voice = (() => {
         if (/voce e (real|uma ia|um bot)|quem e voce/.test(n))
             return 'Sou o <b>K11 OMNI Voice</b> — IA assistente da loja K11. 🤖<br>Analiso estoque, PDV, duelos, tendências e agendamentos em linguagem natural.';
         if (/cade|gemini (ativo|ai|aí)|ia (ativa|funcionando)/.test(n))
-            return 'Groq AI ativo, Llama 3.3. Pode perguntar.';
+            return 'K11 AI ativo via servidor. Pode perguntar.';
         return null; // não é local
     }
 
@@ -815,7 +799,7 @@ const K11Voice = (() => {
         return ctx;
     }
 
-    async function _callGemini(query, apiKey) {
+    async function _callGemini(query, _apiKey) {
         // ── Respostas 100% locais — ZERO API ─────────────────
         const localResp = _geminiLocalResp(query);
         if (localResp) {
@@ -823,7 +807,7 @@ const K11Voice = (() => {
             return localResp;
         }
 
-        // ── Cooldown após 429 ─────────────────────────────────
+        // ── Cooldown após erro 429 do servidor ────────────────
         if (Date.now() < _gemini429Until) {
             const s = Math.ceil((_gemini429Until - Date.now()) / 1000);
             return '⏳ <b>Cota Groq em recarga</b> — ' + s + 's.<br>Use: <b>rupturas</b>, <b>estoque</b>, <b>pkl</b>, <b>fila</b>.';
@@ -832,7 +816,7 @@ const K11Voice = (() => {
         // ── Contexto dinâmico (só o relevante pra query) ──────
         const ctx = _buildSmartContext(query);
 
-        // ── Dados do usuário logado para personalização ──────
+        // ── Dados do usuário logado para personalização ───────
         const usr = _usuario();
         const nomeUsuario = usr.nome ? usr.nome.split(' ')[0] : 'gerente';
         const roleUsuario = usr.role ?? 'op';
@@ -866,59 +850,51 @@ const K11Voice = (() => {
 
             'DADOS DO SISTEMA (' + new Date().toLocaleTimeString('pt-BR') + '):\n' + ctx;
 
-        // ── Groq API (OpenAI-compatible) ──────────────────────
-        const body = {
-            model: 'llama-3.3-70b-versatile',
-            messages: [
-                { role: 'system', content: systemText },
-                { role: 'user',   content: query },
-            ],
-            temperature: 0.35,   // mais decisivo e assertivo, menos robótico
-            max_tokens: 280,    // força respostas curtas e cirúrgicas
-            top_p: 0.85,
-        };
-
-        const url = 'https://api.groq.com/openai/v1/chat/completions';
+        // ── Chama /api/ai/chat no servidor (proxy seguro para o Groq) ──
+        // A chave Groq fica exclusivamente em process.env.GROQ_API_KEY no Railway.
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 15000);
+        const timer = setTimeout(() => controller.abort(), 20000);
 
         try {
-            const r = await fetch(url, {
+            const r = await fetch(`${K11_SERVER_URL}/api/ai/chat`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + apiKey,
+                    ...(K11Auth.getToken() ? { 'Authorization': `Bearer ${K11Auth.getToken()}` } : {}),
                 },
-                body: JSON.stringify(body),
+                body: JSON.stringify({
+                    message: query,
+                    context: systemText,
+                }),
                 signal: controller.signal,
             });
             clearTimeout(timer);
 
             if (!r.ok) {
                 const errBody = await r.json().catch(() => ({}));
-                const errMsg  = errBody?.error?.message ?? '';
-                console.error('[K11Voice] Groq HTTP ' + r.status + ':', errMsg);
+                const errMsg  = errBody?.error ?? '';
+                console.error('[K11Voice] /api/ai/chat HTTP ' + r.status + ':', errMsg);
                 if (r.status === 429) {
-                    _gemini429Until = Date.now() + 60000; // Groq reseta mais rápido (1 min)
+                    _gemini429Until = Date.now() + 60000;
                     return '⚠️ <b>Cota Groq esgotada</b>.<br>Aguarde ~1 min ou tente amanhã.<br><span style="font-size:10px;color:#64748b">Offline: <b>rupturas</b>, <b>estoque</b>, <b>pkl</b>, <b>fila</b>, SKU numérico.</span>';
                 }
-                if (r.status === 401 || r.status === 403) {
-                    if (typeof K11Setup !== 'undefined') K11Setup.changeKey();
-                    return '🔑 <b>Chave Groq inválida</b> — reconfigurando...';
+                if (r.status === 401) {
+                    return '🔑 <b>Sessão expirada</b> — faça login novamente.';
                 }
-                return '❌ Groq erro ' + r.status + ': ' + errMsg.substring(0, 80);
+                return '❌ Erro ' + r.status + ': ' + String(errMsg).substring(0, 80);
             }
 
             const data = await r.json();
-            const text = data?.choices?.[0]?.message?.content ?? '';
+            // Servidor retorna { success: true, response: '...' }
+            const text = data?.response ?? '';
             if (!text.trim()) return null;
             _gemini429Until = 0;
             return text.trim();
 
         } catch (e) {
             clearTimeout(timer);
-            if (e.name === 'AbortError') return '⏱️ <b>Groq timeout</b>. Tente novamente.';
-            console.error('[K11Voice] Groq erro:', e);
+            if (e.name === 'AbortError') return '⏱️ <b>Timeout</b> — tente novamente.';
+            console.error('[K11Voice] /api/ai/chat erro:', e);
             return null;
         }
     }
@@ -1007,20 +983,13 @@ const K11Voice = (() => {
         try { return JSON.parse(sessionStorage.getItem('k11_user')) ?? {}; } catch(_) { return {}; }
     }
 
-    // ── Lê a chave Groq de 3 fontes, sem depender do K11Setup ──
-    // 1º: constante do k11-config.js (prioridade máxima)
-    // 2º: localStorage (salvo pelo K11Setup se estiver carregado)
-    // 3º: sessionStorage (fallback iOS modo privado)
+    // ── Chave Groq gerenciada exclusivamente pelo servidor ───────
+    // A chave vive em process.env.GROQ_API_KEY no Railway.
+    // O frontend NUNCA precisa da chave — toda chamada vai para
+    // POST /api/ai/chat e o servidor repassa ao Groq.
+    // Retornamos 'server' como truthy para não bloquear o fluxo.
     function _getApiKey() {
-        try {
-            if (typeof K11_GROQ_API_KEY !== 'undefined'
-                && K11_GROQ_API_KEY?.startsWith('gsk_')
-                && K11_GROQ_API_KEY.length >= 30)
-                return K11_GROQ_API_KEY;
-        } catch(_) {}
-        try { const k = localStorage.getItem('k11_groq_api_key'); if (k?.startsWith('gsk_')) return k; } catch(_) {}
-        try { const k = sessionStorage.getItem('k11_groq_api_key'); if (k?.startsWith('gsk_')) return k; } catch(_) {}
-        return '';
+        return 'server';
     }
 
     // ══════════════════════════════════════════════════════════
@@ -1129,7 +1098,6 @@ const K11Voice = (() => {
             .filter(([,v]) => v?.length > 0)
             .map(([k,v]) => `&nbsp;&nbsp;↳ ${esc(k)}: <b>${v.length}</b>`)
             .join('<br>');
-        const hasGemini = !!_getApiKey();
         return `🖥️ <b>K11 OMNI ELITE</b> — dados em memória:<br>
 📦 Produtos: <b>${_prods().length}</b> SKUs<br>
 🔄 Movimentos: <b>${_mov().length}</b> registros<br>
@@ -1137,7 +1105,7 @@ const K11Voice = (() => {
 📋 Agendamentos: <b>${_ags().length}</b><br>
 ⚠️ Gargalos UC: <b>${_uc().length}</b><br>
 📋 Tarefas: <b>${_tarefas().length}</b><br>
-🤖 Gemini AI: <b>${hasGemini ? '✅ Ativo' : '⚠️ Sem chave'}</b><br>
+🤖 K11 AI: <b>✅ Ativo (servidor)</b><br>
 Status: <b>${esc(st)}</b>`;
     }
 
@@ -1447,7 +1415,6 @@ ${status} · Total:<b>${prod.total ?? 0}un</b> · PKL:<b>${prod.pkl ?? 0}un</b>$
         const rups  = _prods().filter(p => p.categoriaCor === 'red').length;
         const fila  = _fila().length;
         const ags   = _ags().length;
-        const hasGemini = !!_getApiKey();
         let ctx = '';
         if (!_dadosOk()) {
             ctx = ' ⏳ Dados ainda carregando...';
@@ -1479,7 +1446,7 @@ ${status} · Total:<b>${prod.total ?? 0}un</b> · PKL:<b>${prod.pkl ?? 0}un</b>$
 · <b>"prioridade agora"</b> → fila executiva imediata<br>
 · <b>"ações"</b> → alertas prioritários do turno<br>
 · <b>"sistema"</b> → quantos dados foram carregados<br>
-<br>✦ Com Gemini ativo: qualquer pergunta em linguagem natural`;
+<br>✦ K11 AI ativo: qualquer pergunta em linguagem natural`;
     }
 
     // ══════════════════════════════════════════════════════════
