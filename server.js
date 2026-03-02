@@ -1,6 +1,6 @@
 /**
  * ╔═══════════════════════════════════════════════════════════════╗
- * ║          K11 OMNI ELITE — BACKEND SERVER v1.0.0               ║
+ * ║          K11 OMNI ELITE — BACKEND SERVER v1.1.0               ║
  * ║          A alma do projeto. Tudo passa por aqui.              ║
  * ╚═══════════════════════════════════════════════════════════════╝
  *
@@ -19,6 +19,9 @@
  * GET  /api/ai/health           → análise IA do sistema
  * POST /api/ai/chat             → chat com supervisor de IA
  * GET  /api/ai/score            → health score atual
+ * GET  /api/ai/stream           → SSE: alertas e prioridades em tempo real
+ * POST /api/ai/force-analysis   → força análise imediata
+ * GET  /api/ai/state            → estado atual do supervisor
  */
 
 'use strict';
@@ -63,14 +66,13 @@ logger.info('BOOT', `Plataforma: ${os.platform()} ${os.arch()}`);
 
 // ── SEGURANÇA ─────────────────────────────────────────────────
 app.use(helmet({
-  contentSecurityPolicy: false, // desativa pois servimos HTML estático
+  contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false,
 }));
 
 // CORS — permite front-end local + Railway
 app.use(cors({
   origin: (origin, cb) => {
-    // Permite: sem origin (apps mobile/curl), localhost, *.railway.app, *.up.railway.app
     if (!origin ||
       origin.includes('localhost') ||
       origin.includes('127.0.0.1') ||
@@ -78,8 +80,7 @@ app.use(cors({
       origin.includes('file://')) {
       return cb(null, true);
     }
-    // Em produção, adicione seus domínios aqui
-    cb(null, true); // Permissivo por padrão — restrinja conforme necessário
+    cb(null, true);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -112,10 +113,11 @@ app.use(morgan((tokens, req, res) => {
   const ms = tokens['response-time'](req, res);
   const method = tokens.method(req, res);
   const url = tokens.url(req, res);
-  if (url?.includes('/api/system/stream')) return null; // não loga SSE keepalives
+  // Não loga SSE keepalives (system stream e ai stream)
+  if (url?.includes('/api/system/stream') || url?.includes('/api/ai/stream')) return null;
   const level = status >= 500 ? 'error' : status >= 400 ? 'warn' : 'debug';
   logger[level]('HTTP', `${method} ${url} → ${status} (${ms}ms)`);
-  return null; // morgan não escreve nada, logger já fez
+  return null;
 }));
 
 // ── REQUEST TRACKER ───────────────────────────────────────────
@@ -130,10 +132,11 @@ app.post('/api/auth/register',    register.registerHandler);
 app.post('/api/auth/confirm-pin', register.confirmPinHandler);
 app.post('/api/auth/resend-pin',  register.resendPinHandler);
 
-app.post('/api/auth/refresh', auth.requireAuth, auth.refreshHandler);
-app.post('/api/auth/logout',  auth.requireAuth, auth.logoutHandler);
+app.post('/api/auth/refresh',         auth.requireAuth, auth.refreshHandler);
+app.post('/api/auth/logout',          auth.requireAuth, auth.logoutHandler);
 app.post('/api/auth/forgot-password', register.forgotPasswordHandler);
 app.post('/api/auth/reset-password',  register.resetPasswordHandler);
+
 
 // ─────────────────────────────────────────────────────────────
 // ROTAS PÚBLICAS (Sem auth)
@@ -148,11 +151,44 @@ app.get('/api/status', (req, res) => {
   res.json({
     ok: true,
     system: 'K11 OMNI ELITE',
-    version: '1.0.0',
+    version: '1.1.0',
     uptime: Math.floor(process.uptime()),
     env: process.env.NODE_ENV || 'development',
   });
 });
+
+
+// ─────────────────────────────────────────────────────────────
+// LIVE ENGINE — ROTAS DO SUPERVISOR
+// Devem ficar ANTES do router genérico app.use('/api/ai', aiRoutes)
+// para que tenham prioridade de matching.
+// ─────────────────────────────────────────────────────────────
+
+// SSE: EventSource não suporta headers customizados — token vem como ?token= na query
+app.get('/api/ai/stream', (req, res) => {
+  const t = req.query.token;
+  if (t && !req.headers.authorization) {
+    req.headers.authorization = `Bearer ${t}`;
+  }
+  auth.requireAuth(req, res, () => supervisor.addSSEClient(res));
+});
+
+// Força análise imediata (ex: após upload de dados ou pull-to-refresh)
+app.post('/api/ai/force-analysis', auth.requireAuth, async (req, res) => {
+  try {
+    const result = await supervisor.forceAnalysis();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    logger.error('AI-ROUTE', `force-analysis falhou: ${err.message}`);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Estado atual do supervisor (diagnóstico)
+app.get('/api/ai/state', auth.requireAuth, (req, res) => {
+  res.json({ ok: true, ...supervisor.getState() });
+});
+
 
 // ─────────────────────────────────────────────────────────────
 // ROTAS PROTEGIDAS (Exigem Header: Authorization: Bearer <token>)
@@ -182,6 +218,9 @@ app.use((req, res) => {
       'POST /api/auth/register',
       'GET  /api/ai/health',
       'POST /api/ai/chat',
+      'GET  /api/ai/stream',
+      'POST /api/ai/force-analysis',
+      'GET  /api/ai/state',
     ],
   });
 });
@@ -205,7 +244,7 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
   logger.info('BOOT', `Health:   http://localhost:${PORT}/health`);
   logger.info('BOOT', `Status:   http://localhost:${PORT}/api/status`);
   logger.info('BOOT', '────────────────────────────────────────');
-  
+
   // Pré-carrega todos os datasets na inicialização
   logger.info('BOOT', 'Carregando datasets...');
   const all = await datastore.getAll();
@@ -213,21 +252,11 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
     .map(([k, v]) => `${k}:${v.length}`)
     .join(' | ');
   logger.info('BOOT', `Datasets carregados → ${totals}`);
-  
-  // Health check automático ao iniciar (se IA disponível)
-  if (process.env.GROQ_API_KEY?.startsWith('gsk_')) {
-    logger.info('BOOT', 'Executando análise inicial de saúde...');
-    setTimeout(async () => {
-      try {
-        const snap = { uptime: process.uptime() * 1000, logStats: logger.getStats(), datastoreStats: datastore.getStats(), requestStats: requestTracker.getStats() };
-        const check = await supervisor.analyzeHealth(snap);
-        logger.info('AI-SUPERVISOR', `Score inicial: ${check.score}/100 — ${check.status}`);
-      } catch (_) {}
-    }, 2000);
-  } else {
-    logger.warn('BOOT', 'GROQ_API_KEY não configurada — supervisor de IA desativado');
-  }
-  
+
+  // Inicializa o supervisor (motor vivo — analisa a cada 5min via setInterval)
+  // Chamada única aqui no startup — NÃO duplicar em outro lugar do arquivo
+  supervisor.init(datastore);
+
   logger.info('BOOT', '✓ K11 OMNI ELITE SERVER PRONTO');
 });
 
@@ -238,12 +267,11 @@ function shutdown(signal) {
     logger.info('BOOT', 'Servidor encerrado com sucesso.');
     process.exit(0);
   });
-  // Força encerramento após 5s se algo travar
   setTimeout(() => process.exit(1), 5000);
 }
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGINT',  () => shutdown('SIGINT'));
 
 process.on('uncaughtException', (err) => {
   logger.critical('PROCESS', `uncaughtException: ${err.message}`, {
