@@ -193,18 +193,15 @@ const K11Setup = (() => {
         document.getElementById('k11-setup-overlay')?.classList.remove('active');
     }
 
-    function changeKey() { removeKey(); show(); }
+    function changeKey() { /* desativado — chave gerenciada pelo servidor */ }
 
-    // Só mostra tela se NÃO houver chave em lugar nenhum (config.js ou localStorage)
-    function check() {
-        if (!getKey()) show();
-    }
+    // check() desativado — chave gerenciada pelo servidor (process.env.GROQ_API_KEY)
+    function check() { /* não abre mais o modal */ }
 
     return { check, show, hide, changeKey, getKey, saveKey };
 })();
 
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => K11Setup.check());
-} else {
-    K11Setup.check();
-}
+// ── AUTO-CHECK DESATIVADO ─────────────────────────────────────
+// A chave Groq agora vive exclusivamente em process.env.GROQ_API_KEY
+// no servidor Railway. O frontend não precisa de chave.
+// K11Setup.check() não é mais chamado automaticamente.
