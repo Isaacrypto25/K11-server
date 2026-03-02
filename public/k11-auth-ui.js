@@ -492,7 +492,7 @@ const K11AuthUI = (() => {
                 <label class="auth-label">Email corporativo</label>
                 <div class="auth-input-wrap">
                     <input id="f-email" class="auth-input" type="email"
-                           placeholder="nome@obramax.com" autocomplete="email">
+                           placeholder="nome@obramax.com.br" autocomplete="email">
                     <span class="auth-input-icon" id="icon-email"></span>
                 </div>
                 <div class="auth-field-error" id="err-email"></div>
@@ -609,11 +609,11 @@ const K11AuthUI = (() => {
                 <label class="auth-label">Email corporativo</label>
                 <div class="auth-input-wrap">
                     <input id="f-email" class="auth-input" type="email"
-                           placeholder="rsantos@obramax.com" autocomplete="email">
+                           placeholder="rsantos@obramax.com.br" autocomplete="email">
                     <span class="auth-input-icon" id="icon-email"></span>
                 </div>
                 <div class="auth-field-error" id="err-email"></div>
-                <div class="auth-field-hint">Deve ser @obramax.com</div>
+                <div class="auth-field-hint">Deve ser @obramax.com.br</div>
             </div>
 
             <div class="auth-field">
@@ -743,7 +743,7 @@ const K11AuthUI = (() => {
         return null;
     }
     function _validateEmail(v, nome) {
-        if (!v || !v.endsWith('@obramax.com')) return 'Email deve ser @obramax.com.';
+        if (!v || !v.endsWith('@obramax.com.br')) return 'Email deve ser @obramax.com.br.';
         const local = v.split('@')[0].toLowerCase();
         const primeiraLetraNome = (nome || '').trim().toLowerCase()[0];
         if (!local || local[0] !== primeiraLetraNome)
