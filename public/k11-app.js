@@ -481,6 +481,31 @@ const APP = {
         document.querySelectorAll('[data-badge="gargalos"]').forEach(el => { el.dataset.count = gargalos > 0 ? gargalos : ''; });
     },
 
+    toggleMode() {
+        const current  = (sessionStorage.getItem('k11_mode') || 'ultra').toLowerCase();
+        const next     = current === 'ultra' ? 'lite' : 'ultra';
+
+        try { sessionStorage.setItem('k11_mode', next); } catch {}
+
+        // Atualiza variável global e classe do body
+        window.K11_MODE = next;
+        document.body.classList.toggle('mode-lite', next === 'lite');
+
+        // Atualiza o badge
+        const badgeEl = document.getElementById('mode-badge-header');
+        if (badgeEl) {
+            badgeEl.className = `mode-badge ${next}`;
+            badgeEl.textContent = next === 'lite' ? '⚡ LITE' : '🧠 ULTRA';
+        }
+
+        // Ajusta a view padrão
+        window._K11_DEFAULT_VIEW = next === 'lite' ? 'estoque' : 'dash';
+
+        // Toast + navega pra view padrão do novo modo
+        APP.ui.toast(`Modo ${next.toUpperCase()} ativado`, 'info');
+        APP.view(window._K11_DEFAULT_VIEW);
+    },
+
     _setupPullToRefresh() {
         let startY = 0;
         document.addEventListener('touchstart', e => { startY = e.touches[0].clientY; }, { passive: true });
