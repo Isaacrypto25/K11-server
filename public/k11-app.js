@@ -1,16 +1,123 @@
 /**
- * K11 OMNI ELITE — NUCLEAR BOOT MINIMAL
+ * K11 OMNI ELITE — NUCLEAR BOOT SYSTEM
  * ════════════════════════════════════════════════════════════════
- * Versão MINIMALISTA - Apenas o essencial para garantir APP.init()
- * 
- * Cola isto no FINAL do seu k11-app.js original (antes de window.APP = APP)
- * OU use este arquivo completo substituindo k11-app.js
+ * VERSÃO COMPLETA COM CÓDIGO NUCLEAR
+ * Use este arquivo substituindo k11-app.js
  */
 
 'use strict';
 
 // ════════════════════════════════════════════════════════════════
-// 🔥 GARANTIR QUE APP.init() SEJA CHAMADO
+// CORE APP INITIALIZATION (Original K11 APP)
+// ════════════════════════════════════════════════════════════════
+
+const APP = (function() {
+    
+    const state = {
+        authToken: null,
+        user: null,
+        data: {},
+        mode: sessionStorage.getItem('k11_mode') || 'ultra',
+        currentView: window._K11_DEFAULT_VIEW || 'dash',
+        _initialized: false,
+    };
+    
+    // ── AUTH ──────────────────────────────────────────────────
+    function _setupAuth() {
+        const token = sessionStorage.getItem('k11_jwt');
+        if (token) {
+            state.authToken = token;
+            state.user = JSON.parse(sessionStorage.getItem('k11_user') || '{}');
+        }
+    }
+    
+    function _setupDataEvents() {
+        document.addEventListener('k11-data-ready', (e) => {
+            Object.assign(state.data, e.detail || {});
+        });
+    }
+    
+    // ── VIEWS ─────────────────────────────────────────────────
+    function view(viewName, btnEl) {
+        if (!viewName || typeof K11Views !== 'object') return;
+        
+        state.currentView = viewName;
+        
+        // Remove active de todos
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        
+        // Marca novo como active
+        if (btnEl) btnEl.classList.add('active');
+        
+        // Chama a view
+        if (typeof K11Views[viewName] === 'function') {
+            K11Views[viewName]();
+        }
+    }
+    
+    // ── MODE ──────────────────────────────────────────────────
+    function toggleMode() {
+        const newMode = state.mode === 'ultra' ? 'lite' : 'ultra';
+        state.mode = newMode;
+        sessionStorage.setItem('k11_mode', newMode);
+        
+        document.body.classList.toggle('mode-lite', newMode === 'lite');
+        
+        const badge = document.getElementById('mode-badge-header');
+        if (badge) {
+            badge.className = `mode-badge ${newMode}`;
+            badge.textContent = newMode.toUpperCase();
+        }
+        
+        location.reload();
+    }
+    
+    // ── MAIN INIT ─────────────────────────────────────────────
+    function init() {
+        if (state._initialized) return;
+        state._initialized = true;
+        
+        console.log('[K11 APP] Inicializando...');
+        
+        // Setup
+        _setupAuth();
+        _setupDataEvents();
+        
+        // Badge de modo
+        const badge = document.getElementById('mode-badge-header');
+        if (badge) {
+            badge.className = `mode-badge ${state.mode}`;
+            badge.textContent = state.mode.toUpperCase();
+            badge.style.display = 'inline-block';
+        }
+        
+        // Chama a view padrão
+        const defaultBtn = document.querySelector('[data-view="' + state.currentView + '"]');
+        view(state.currentView, defaultBtn);
+        
+        // Emit evento de ready
+        window.dispatchEvent(new CustomEvent('k11:ready', {
+            detail: { state }
+        }));
+        
+        console.log('[K11 APP] ✅ Inicialização concluída');
+    }
+    
+    // ── PUBLIC API ────────────────────────────────────────────
+    return {
+        init,
+        view,
+        toggleMode,
+        getState: () => ({ ...state }),
+        getAuth: () => state.authToken,
+        _initialized: state._initialized,
+    };
+})();
+
+// ════════════════════════════════════════════════════════════════
+// 🔥 NUCLEAR BOOT: Garantir que APP.init() seja chamado
 // ════════════════════════════════════════════════════════════════
 
 (function _nuclearInit() {
@@ -84,7 +191,7 @@
 })();
 
 // ════════════════════════════════════════════════════════════════
-// 🔥 GARANTIR QUE K11Live.start() SEJA CHAMADO (secondary)
+// 🔥 NUCLEAR BOOT: Garantir que K11Live.start() seja chamado
 // ════════════════════════════════════════════════════════════════
 
 (function _k11LiveInit() {
@@ -142,3 +249,6 @@
 })();
 
 console.log('[K11 NUCLEAR] ✅ Sistema de inicialização nuclear ativo');
+
+// Exportar para uso global
+window.APP = APP;
