@@ -55,10 +55,6 @@ app.use(compression());
 app.use(morgan('combined'));
 app.use(requestTracker);
 
-// ── SERVE STATIC FILES (FRONTEND) ─────────────────────────────
-// ⚠️ IMPORTANTE: DEVE ESTAR ANTES DAS ROTAS API
-app.use(express.static('public'));
-
 // ════════════════════════════════════════════════════════════════
 // ROUTES
 // ════════════════════════════════════════════════════════════════
@@ -74,7 +70,7 @@ app.get('/health', (req, res) => {
 });
 
 // ── ROOT ──────────────────────────────────────────────────────
-app.get('/api', (req, res) => {
+app.get('/', (req, res) => {
     res.json({
         ok: true,
         message: 'K11 OMNI ELITE Server',
