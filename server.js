@@ -408,10 +408,10 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
 
   // ── Aquece cache em background ─────────────────────────────
   logger.info('BOOT', 'Aquecendo cache em background...');
-  datastore.warmup();
+  if (typeof datastore.warmup === 'function') datastore.warmup();
 
   // ── Supabase client exposto pelo datastore ─────────────────
-  const supabaseClient = datastore.supabase || datastore.getSupabase?.() || null;
+  const supabaseClient = datastore.supabase || datastore.getSupabase?.() || datastore.client || null;
 
   // ── Supervisor legacy ──────────────────────────────────────
   try {
@@ -491,9 +491,9 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
       try {
         const snap = {
           uptime:         process.uptime() * 1000,
-          logStats:       logger.getStats(),
-          datastoreStats: datastore.getStats(),
-          requestStats:   requestTracker.getStats(),
+          logStats:       typeof logger.getStats === 'function' ? logger.getStats() : {},
+          datastoreStats: typeof datastore.getStats === 'function' ? datastore.getStats() : {},
+          requestStats:   typeof requestTracker.getStats === 'function' ? requestTracker.getStats() : {},
         };
         const check = await supervisor_svc.analyzeHealth(snap);
         logger.info('AI-SUPERVISOR', `Score inicial: ${check.score}/100 — ${check.status}`);
