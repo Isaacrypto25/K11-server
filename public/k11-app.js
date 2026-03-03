@@ -184,9 +184,10 @@ const APP = {
 
         APP._serverLog('info', 'FRONTEND', 'K11 OMNI init() iniciado');
 
+        const t = Date.now();
+        let success = false;
+        
         try {
-            const t = Date.now();
-
             // ── Carrega dados via K11DataInject (Supabase → Railway) ───
             let allData = null;
             if (typeof K11DataInject !== 'undefined') {
@@ -196,6 +197,84 @@ const APP = {
                         allData = res.data;
                     }
                 } catch (e) {
+                    if (e.message?.includes('401')) {
+                        APP.ui.toast('Sessão expirada. Faça login novamente.', 'danger');
+                        setTimeout(() => APP.auth.logout(), 2000);
+                        return;
+                    }
+                    // servidor indisponível — continua com arrays vazios
+                    console.warn('[K11 init] Servidor indisponível, continuando offline:', e.message);
+                }
+            }
+
+            // ── Fallback para arquivos locais (modo offline/demo) ─────
+            let p, a, m, v, vAnt, tar, vMesq, vJaca, vBenf, forn;
+
+            if (allData) {
+                p     = allData.produtos       || [];
+                a     = allData.auditoria      || [];
+                m     = allData.movimento      || [];
+                v     = allData.pdv            || [];
+                vAnt  = allData.pdvAnterior    || [];
+                tar   = allData.tarefas        || [];
+                vMesq = allData.pdvmesquita    || [];
+                vJaca = allData.pdvjacarepagua || [];
+                vBenf = allData.pdvbenfica     || [];
+                forn  = allData.fornecedor     || [];
+            } else {
+                [p, a, m, v, vAnt, tar, vMesq, vJaca, vBenf, forn] = [[], [], [], [], [], [], [], [], [], []];
+            }
+
+            // Injeta dados no APP.db
+            APP.db.rawEstoque  = p;
+            APP.db.auditoria   = a;
+            APP.db.movimento   = m;
+            APP.db.pdv         = v;
+            APP.db.pdvAnterior = vAnt;
+            APP.db.tarefas     = tar;
+
+            // Processamento
+            console.log('[K11 init] Processando dados...');
+            APP.processarEstoque(p);
+            APP.processarDueloAqua();
+            APP.processarBI_DualTrend();
+            APP.processarUCGlobal_DPA();
+            APP._detectarInconsistencias();
+
+            // Status
+            const isServerMode = !!allData;
+            if (st) {
+                st.innerText = isServerMode ? '● K11 OMNI ONLINE ⚡ SERVER' : '● K11 OMNI ONLINE';
+                st.classList.add('status-online');
+            }
+
+            APP._setupPullToRefresh();
+            APP._updateNavBadges();
+
+            const badgeEl = document.getElementById('mode-badge-header');
+            if (badgeEl) {
+                const mode = (typeof K11_MODE !== 'undefined') ? K11_MODE : 'ultra';
+                badgeEl.className = `mode-badge ${mode}`;
+                badgeEl.textContent = mode === 'lite' ? '⚡ LITE' : '🧠 ULTRA';
+            }
+
+            const defaultView = (typeof window._K11_DEFAULT_VIEW !== 'undefined')
+                ? window._K11_DEFAULT_VIEW : 'dash';
+
+            APP.view(defaultView);
+
+            if (APP._warnNoServer) APP._showNoServerWarning();
+
+            APP._serverLog('info', 'FRONTEND', 'K11 OMNI carregado com sucesso', {
+                produtos:   APP.db.rawEstoque.length,
+                pdv:        APP.db.pdv.length,
+                tarefas:    APP.db.tarefas.length,
+                serverMode: isServerMode,
+            });
+            
+            success = true;
+
+        } catch (e) {
             if (st) st.innerText = '⚠ ERRO DE CARREGAMENTO';
             console.error('[K11 init] ERRO DURANTE INICIALIZAÇÃO:', {
                 message: e.message,
@@ -205,20 +284,20 @@ const APP = {
             APP.ui.toast('Falha ao carregar dados. Tente novamente.', 'danger');
             APP._serverLog('error', 'FRONTEND', `init() falhou: ${e.message}`);
             
-            // Ainda assim renderiza uma view vazia, não deixa spinner infinito
+            // Renderiza uma view vazia mesmo com erro
             const defaultView = (typeof window._K11_DEFAULT_VIEW !== 'undefined')
                 ? window._K11_DEFAULT_VIEW : 'dash';
             APP.view(defaultView);
         } finally {
             // 🔥 FIX CRÍTICO: SEMPRE emite k11:ready, com ou sem erro
-            // Sem isso, K11Live.start() nunca é chamado e engine fica "BOOTING" forever
             window.dispatchEvent(new Event('k11:ready'));
             
             const totalMs = Date.now() - t;
-            console.log(`[K11 init] ✓ Inicialização finalizada em ${totalMs}ms`);
+            console.log(`[K11 init] Inicialização ${success ? '✓ OK' : '⚠ COM ERRO'} em ${totalMs}ms`);
         }
+    },
 
-    // ── SERVER FETCH — usa JWT do sessionStorage ─────────────────
+        // ── SERVER FETCH — usa JWT do sessionStorage ─────────────────
     async _serverFetch(path, options = {}) {
         const token = K11Auth.getToken();
         const url   = `${K11_SERVER_URL}${path}`;
