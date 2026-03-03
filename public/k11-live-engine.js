@@ -397,7 +397,16 @@ const K11Live = (() => {
             _boot();
         } else {
             console.log('[K11Live] Aguardando evento k11:ready...');
-            window.addEventListener('k11:ready', _boot, { once: true });
+            // Esperar evento k11:ready
+const readyHandler = () => { _boot(); };
+window.addEventListener('k11:ready', readyHandler, { once: true });
+// Se APP.init não foi chamado ainda, força após 3s
+setTimeout(() => {
+    if (!_started && window.APP?._initialized) {
+        _boot();
+        window.removeEventListener('k11:ready', readyHandler);
+    }
+}, 3000);
         }
     }
 
@@ -462,8 +471,6 @@ const K11Live = (() => {
         setTimeout(_startK11Live, 50);
     }
 
-    // Opção 3: Fallback para o evento k11:ready (para compatibilidade)
-    window.addEventListener('k11:ready', _startK11Live, { once: true });
-})();
-
+    // // Opção 3: Fallback para o evento k11:ready (para compatibilidade)
+ window.addEventListener('k11:ready', _startK11Live, { once: true });
 window.K11Live = K11Live;
