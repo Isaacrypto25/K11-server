@@ -442,10 +442,28 @@ const K11Live = (() => {
 
 })();
 
-// Auto-start após dados carregarem
-window.addEventListener('k11:ready', () => {
-    K11Live.start();
-    setTimeout(() => K11Live.requestNotificationPermission(), 3000);
-}, { once: true });
+// Auto-start: Não depender de k11:ready, usar readyState
+(function() {
+    function _startK11Live() {
+        if (typeof K11Live !== 'undefined' && typeof K11Live.start === 'function') {
+            console.log('[K11Live] Auto-iniciando engine...');
+            K11Live.start();
+            setTimeout(() => K11Live.requestNotificationPermission(), 3000);
+        }
+    }
+
+    // Opção 1: Se ainda está carregando
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(_startK11Live, 100);
+        });
+    } else {
+        // Opção 2: DOM já está pronto
+        setTimeout(_startK11Live, 50);
+    }
+
+    // Opção 3: Fallback para o evento k11:ready (para compatibilidade)
+    window.addEventListener('k11:ready', _startK11Live, { once: true });
+})();
 
 window.K11Live = K11Live;
