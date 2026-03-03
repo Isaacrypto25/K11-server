@@ -1,272 +1,608 @@
 /**
- * K11 OMNI ELITE — APP CORE (VERSÃO CORRIGIDA)
- * ════════════════════════════════════════════════════════════════
- * PROBLEMA FIXADO: APP.init() ERA CHAMADO SOMENTE SE TUDO EXISTISSE
- * SOLUÇÃO: Chamar APP.init() DIRETAMENTE no final do arquivo
- * 
- * Este arquivo SUBSTITUI k11-app.js (qualquer versão anterior)
+ * K11 OMNI ELITE — APP CORE (Bootstrap & Navegação)
+ * ════════════════════════════════════════════════════
+ * v3.0 — Autenticação JWT via servidor Railway
+ *
+ * Mudanças de segurança vs v2.0:
+ * - Login agora valida no SERVIDOR (não mais no frontend)
+ * - Token JWT armazenado em sessionStorage (não a senha)
+ * - K11_SERVER_TOKEN removido — todas as chamadas usam JWT
+ * - USUARIOS_VALIDOS removido do frontend
+ * - Groq key removida do frontend
+ *
+ * Depende de: k11-config.js, k11-utils.js, k11-ui.js,
+ *             k11-processors.js, k11-views.js, k11-actions.js
  */
 
 'use strict';
 
-// ════════════════════════════════════════════════════════════════
-// CORE APP INITIALIZATION
-// ════════════════════════════════════════════════════════════════
+const APP = {
 
-const APP = (function() {
-    
-    const state = {
-        authToken: null,
-        user: null,
-        data: {},
-        mode: null,
-        currentView: 'dash',
-        _initialized: false,
-    };
-    
-    // ── INICIALIZAR MODO ──────────────────────────────────────
-    function _initMode() {
-        try {
-            state.mode = sessionStorage.getItem('k11_mode') || 'ultra';
-        } catch {
-            state.mode = 'ultra';
-        }
-        
-        const isLite = state.mode === 'lite';
-        if (isLite) document.body.classList.add('mode-lite');
-        
-        state.currentView = isLite ? 'estoque' : 'dash';
-        window._K11_DEFAULT_VIEW = state.currentView;
-    }
-    
-    // ── SETUP AUTH ────────────────────────────────────────────
-    function _setupAuth() {
-        try {
-            const token = sessionStorage.getItem('k11_jwt');
-            if (token) {
-                state.authToken = token;
-                try {
-                    state.user = JSON.parse(sessionStorage.getItem('k11_user') || '{}');
-                } catch {
-                    state.user = {};
-                }
-            }
-        } catch (err) {
-            console.warn('[APP] Erro ao restaurar auth:', err.message);
-        }
-    }
-    
-    // ── SETUP DATA EVENTS ─────────────────────────────────────
-    function _setupDataEvents() {
-        document.addEventListener('k11-data-ready', (e) => {
-            if (e.detail) Object.assign(state.data, e.detail);
-        });
-    }
-    
-    // ── VIEW MANAGEMENT ───────────────────────────────────────
-    function view(viewName, btnEl) {
-        if (!viewName) return;
-        if (typeof K11Views !== 'object' || typeof K11Views[viewName] !== 'function') {
-            console.warn(`[APP] View não existe: ${viewName}`);
-            return;
-        }
-        
-        state.currentView = viewName;
-        
-        // Atualiza botões nav
-        document.querySelectorAll('.nav-btn').forEach(btn => {
-            btn.classList.remove('active');
-        });
-        if (btnEl) btnEl.classList.add('active');
-        
-        // Chama a view
-        try {
-            K11Views[viewName]();
-        } catch (err) {
-            console.error(`[APP] Erro ao renderizar view ${viewName}:`, err);
-        }
-    }
-    
-    // ── MODE TOGGLE ───────────────────────────────────────────
-    function toggleMode() {
-        const newMode = state.mode === 'ultra' ? 'lite' : 'ultra';
-        state.mode = newMode;
-        try { sessionStorage.setItem('k11_mode', newMode); } catch {}
-        
-        document.body.classList.toggle('mode-lite', newMode === 'lite');
-        
-        const badge = document.getElementById('mode-badge-header');
-        if (badge) {
-            badge.className = `mode-badge ${newMode}`;
-            badge.textContent = newMode.toUpperCase();
-        }
-        
-        // Recarrega a página para aplicar modo completamente
-        location.reload();
-    }
-    
-    // ── MAIN INIT ─────────────────────────────────────────────
-    function init() {
-        // Guard: evita double-init
-        if (state._initialized) {
-            console.log('[APP] Já foi inicializado, ignorando chamada duplicada');
-            return;
-        }
-        
-        state._initialized = true;
-        console.log('[APP] 🚀 Inicializando...');
-        
-        try {
-            // 1. Setup modo
-            _initMode();
-            
-            // 2. Restaurar autenticação
-            _setupAuth();
-            
-            // 3. Setup de eventos de dados
-            _setupDataEvents();
-            
-            // 4. Atualizar badge de modo
-            const badge = document.getElementById('mode-badge-header');
-            if (badge) {
-                badge.className = `mode-badge ${state.mode}`;
-                badge.textContent = state.mode.toUpperCase();
-                badge.style.display = 'inline-block';
-            }
-            
-            // 5. Atualizar status do engine
-            const engineStatus = document.getElementById('engine-status');
-            if (engineStatus) {
-                engineStatus.textContent = 'READY ✓';
-                engineStatus.style.color = 'var(--primary)';
-            }
-            
-            // 6. Renderizar view padrão
-            const defaultBtn = document.querySelector(`[data-view="${state.currentView}"]`);
-            view(state.currentView, defaultBtn);
-            
-            // 7. Emit evento global de ready
-            window.dispatchEvent(new CustomEvent('k11:ready', {
-                detail: { 
-                    state,
-                    timestamp: Date.now(),
-                    userAgent: navigator.userAgent,
-                }
-            }));
-            
-            console.log('[APP] ✅ Inicialização CONCLUÍDA', {
-                mode: state.mode,
-                view: state.currentView,
-                authenticated: !!state.authToken,
-            });
-            
-        } catch (err) {
-            console.error('[APP] ❌ Erro fatal na inicialização:', err);
-            state._initialized = false;
-            throw err;
-        }
-    }
-    
-    // ── PUBLIC API ────────────────────────────────────────────
-    return {
-        init,
-        view,
-        toggleMode,
-        getState: () => ({ ...state }),
-        getAuth: () => state.authToken,
-        getUser: () => state.user,
-        setAuth: (token, user) => {
-            state.authToken = token;
-            state.user = user || {};
+    // ── ESTADO ──────────────────────────────────────────────────
+    db: {
+        produtos:      [],
+        auditoria:     [],
+        fila:          [],
+        movimento:     [],
+        pdv:           [],
+        pdvAnterior:   [],
+        pdvExtra:      {},
+        tarefas:       [],
+        ucGlobal:      [],
+        agendamentos:  [],
+        fornecedorMap: new Map(),
+    },
+
+    rankings: {
+        growth:       [],
+        decline:      [],
+        duelos:       [],
+        pieStats:     { red: 0, yellow: 0, green: 0, total: 1 },
+        benchmarking: { hidraulica: 0, mesquita: 0, jacarepagua: 0, benfica: 0, loja: 0 },
+        topLeverage:  { desc: 'N/A', vMinha: 0 },
+        meta: {
+            lossGap:        '0.0',
+            valTotalRed:     0,
+            valTotalYellow:  0,
+            inconsistentes:  [],
         },
-        _initialized: state._initialized,
-    };
-})();
+    },
 
-// ════════════════════════════════════════════════════════════════
-// GARANTIR QUE APP.init() SEJA CHAMADO
-// ════════════════════════════════════════════════════════════════
+    ui: {
+        rankingAberto:   false,
+        filtroEstoque:   'ruptura',
+        buscaEstoque:    '',
+        pdvAlvo:         'mesquita',
+        buscaDuelo:      '',
+        skuMatrixAberta: true,
+        skuTab:          'drag',
+        _acoesState:     [],
+        _rafIds:         {},
 
-(function _ensureAppInit() {
-    console.log('[APP BOOT] Garantindo inicialização de APP...');
-    
-    // Tenta várias estratégias para garantir que init() seja chamado
-    
-    // Estratégia 1: Se DOM estiver pronto, chama imediatamente
-    if (document.readyState !== 'loading') {
-        console.log('[APP BOOT] document.readyState =', document.readyState, '→ chamando APP.init() AGORA');
-        setTimeout(() => APP.init(), 0);
-        return;
-    }
-    
-    // Estratégia 2: Escuta DOMContentLoaded
-    document.addEventListener('DOMContentLoaded', () => {
-        console.log('[APP BOOT] DOMContentLoaded → chamando APP.init()');
-        APP.init();
-    });
-    
-    // Estratégia 3: Fallback com timeout (máximo 10 segundos)
-    setTimeout(() => {
-        if (!APP._initialized) {
-            console.warn('[APP BOOT] Timeout de 10s atingido, forçando APP.init()');
-            APP.init();
-        }
-    }, 10_000);
-    
-})();
+        toast(msg, type = 'info') {
+            const existing = document.getElementById('k11-toast');
+            if (existing) existing.remove();
+            const toast       = document.createElement('div');
+            toast.id          = 'k11-toast';
+            toast.className   = `toast toast-${type}`;
+            toast.textContent = msg;
+            document.body.appendChild(toast);
+            requestAnimationFrame(() => toast.classList.add('toast-visible'));
+            setTimeout(() => {
+                toast.classList.remove('toast-visible');
+                setTimeout(() => toast.remove(), 300);
+            }, TOAST_DURATION_MS);
+        },
+    },
 
-// ════════════════════════════════════════════════════════════════
-// GARANTIR QUE K11Live.start() SEJA CHAMADO
-// ════════════════════════════════════════════════════════════════
+    // ── AUTENTICAÇÃO (JWT via servidor) ─────────────────────────
+    auth: {
 
-(function _ensureK11LiveStart() {
-    console.log('[K11LIVE BOOT] Garantindo inicialização de K11Live...');
-    
-    // Estratégia 1: Escuta o evento k11:ready (emitido por APP.init())
-    window.addEventListener('k11:ready', () => {
-        console.log('[K11LIVE BOOT] k11:ready recebido → iniciando K11Live');
-        if (typeof K11Live !== 'undefined' && typeof K11Live.start === 'function') {
-            try {
-                K11Live.start();
-                // Pede permissão de notificação após 2 segundos
-                setTimeout(() => {
-                    if (typeof K11Live.requestNotificationPermission === 'function') {
-                        K11Live.requestNotificationPermission();
-                    }
-                }, 2000);
-            } catch (err) {
-                console.error('[K11LIVE BOOT] Erro ao iniciar K11Live:', err);
+        /**
+         * Login: envia RE + PIN para o servidor.
+         * O servidor valida, retorna JWT + dados do usuário.
+         * Nenhuma credencial fica no frontend.
+         */
+        async login() {
+            const reEl   = document.getElementById('user-re');
+            const passEl = document.getElementById('user-pass');
+            const btn    = document.getElementById('btn-login');
+            const re     = reEl?.value?.trim();
+            const pass   = passEl?.value?.trim();
+
+            if (!re || !pass) {
+                document.querySelector('.op-card')?.classList.add('shake-error');
+                setTimeout(() => document.querySelector('.op-card')?.classList.remove('shake-error'), 500);
+                APP.ui.toast('Preencha RE e PIN.', 'danger');
+                return;
             }
-        }
-    });
-    
-    // Estratégia 2: Fallback com polling (máximo 5 segundos)
-    let tentativas = 0;
-    const interval = setInterval(() => {
-        tentativas++;
-        if (tentativas > 50) { // 5 segundos = 50 × 100ms
-            clearInterval(interval);
-            return;
-        }
-        
-        const liveExiste = typeof K11Live !== 'undefined';
-        const startExiste = liveExiste && typeof K11Live.start === 'function';
-        const jaSeLlamo = liveExiste && K11Live._started;
-        
-        if (liveExiste && startExiste && !jaSeLlamo && APP._initialized) {
-            console.log('[K11LIVE BOOT] Polling detectou APP inicializado → iniciando K11Live');
-            clearInterval(interval);
-            try {
-                K11Live.start();
-            } catch (err) {
-                console.error('[K11LIVE BOOT] Erro ao iniciar K11Live via polling:', err);
-            }
-        }
-    }, 100);
-    
-})();
 
-// Exporta globalmente
+            if (btn) btn.innerHTML = '<div class="spinner-small"></div> AUTENTICANDO...';
+
+            try {
+                const res = await fetch(`${K11_SERVER_URL}/api/auth/login`, {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    JSON.stringify({ re, pin: pass }),
+                    signal:  AbortSignal.timeout(8000),
+                });
+
+                const data = await res.json();
+
+                if (!res.ok || !data.ok) {
+                    // Credencial errada — servidor retornou erro
+                    [reEl, passEl].forEach(el => {
+                        el?.classList.add('shake-error');
+                        setTimeout(() => el?.classList.remove('shake-error'), 500);
+                    });
+                    APP.ui.toast(data.error || 'RE ou PIN incorreto.', 'danger');
+                    if (btn) btn.innerHTML = 'AUTENTICAR NO KERNEL';
+                    return;
+                }
+
+                // Salva JWT e dados do usuário (nunca o PIN)
+                K11Auth.setToken(data.token);
+                try {
+                    sessionStorage.setItem('k11_user', JSON.stringify({
+                        re,
+                        nome: data.user.nome,
+                        role: data.user.role,
+                    }));
+                } catch {}
+
+                if (btn) btn.innerHTML = 'AUTENTICAR NO KERNEL';
+
+                // Redireciona conforme role
+                if (data.user.role === 'super') {
+                    try { sessionStorage.setItem('k11_mode', 'ultra'); } catch {}
+                    document.body.classList.add('fade-out');
+                    setTimeout(() => { window.location.href = 'dashboard.html'; }, 400);
+                } else if (typeof window._showModeModal === 'function') {
+                    window._showModeModal(data.user.nome);
+                } else {
+                    try { sessionStorage.setItem('k11_mode', 'ultra'); } catch {}
+                    document.body.classList.add('fade-out');
+                    setTimeout(() => { window.location.href = 'dashboard.html'; }, 400);
+                }
+
+            } catch (err) {
+                APP.ui.toast('Erro de conexão com o servidor.', 'danger');
+                if (btn) btn.innerHTML = 'AUTENTICAR NO KERNEL';
+                console.error('[K11 auth]', err.message);
+            }
+        },
+
+        /**
+         * Verifica se o JWT atual ainda é válido.
+         * Se não for, redireciona para login.
+         */
+        guard() {
+            if (!K11Auth.isAuthenticated()) {
+                console.warn('[K11 auth] Sessão expirada ou inválida. Redirecionando...');
+                K11Auth.clearToken();
+                window.location.href = 'index.html';
+                return false;
+            }
+            return true;
+        },
+
+        logout() {
+            K11Auth.clearToken();
+            window.location.href = 'index.html';
+        },
+    },
+
+    // ── BOOTSTRAP ────────────────────────────────────────────────
+    async init() {
+        // Guard: garante que o usuário está autenticado
+        if (!APP.auth.guard()) return;
+
+        const st    = document.getElementById('engine-status');
+        const stage = document.getElementById('stage');
+
+        if (st)    st.innerHTML    = '<div class="spinner-small"></div> CONECTANDO AO SERVIDOR...';
+        if (stage) stage.innerHTML = APP.views._skeleton();
+
+        APP._serverLog('info', 'FRONTEND', 'K11 OMNI init() iniciado');
+
+        try {
+            const t = Date.now();
+
+            // ── Carrega tudo via /api/data/all (JWT no header) ────────
+            let allData = null;
+            try {
+                const res = await APP._serverFetch('/api/data/all');
+                if (res?.ok && res?.data) {
+                    allData = res.data;
+                    APP._serverLog('info', 'FRONTEND', 'Dados carregados via servidor', {
+                        datasets: Object.keys(allData).length
+                    });
+                }
+            } catch (e) {
+                // Se for 401, sessão expirou
+                if (e.message?.includes('401')) {
+                    APP.ui.toast('Sessão expirada. Faça login novamente.', 'danger');
+                    setTimeout(() => APP.auth.logout(), 2000);
+                    return;
+                }
+                APP._serverLog('warn', 'FRONTEND', 'Servidor indisponível', { error: e.message });
+            }
+
+            // ── Fallback para arquivos locais (modo offline/demo) ─────
+            let p, a, m, v, vAnt, tar, vMesq, vJaca, vBenf, forn;
+
+            if (allData) {
+                p     = allData.produtos       || [];
+                a     = allData.auditoria      || [];
+                m     = allData.movimento      || [];
+                v     = allData.pdv            || [];
+                vAnt  = allData.pdvAnterior    || [];
+                tar   = allData.tarefas        || [];
+                vMesq = allData.pdvmesquita    || [];
+                vJaca = allData.pdvjacarepagua || [];
+                vBenf = allData.pdvbenfica     || [];
+                forn  = allData.fornecedor     || [];
+            } else {
+                [p, a, m, v, vAnt, tar, vMesq, vJaca, vBenf, forn] = await Promise.all([
+                    APP._safeFetch(`./produtos.json?t=${t}`),
+                    APP._safeFetch(`./auditoria.json?t=${t}`),
+                    APP._safeFetch(`./movimento.json?t=${t}`),
+                    APP._safeFetch(`./pdv.json?t=${t}`),
+                    APP._safeFetch(`./pdvAnterior.json?t=${t}`),
+                    APP._safeFetch(`./tarefas.json?t=${t}`),
+                    APP._safeFetch(`./pdvmesquita.json?t=${t}`),
+                    APP._safeFetch(`./pdvjacarepagua.json?t=${t}`),
+                    APP._safeFetch(`./pdvbenfica.json?t=${t}`),
+                    APP._safeFetch(`./fornecedor.json?t=${t}`),
+                ]);
+            }
+
+            // ── Fornecedor ────────────────────────────────────────────
+            APP.db._rawFornecedor = Array.isArray(forn) ? forn : [];
+            APP.db.fornecedorMap  = new Map();
+            APP.db._rawFornecedor.forEach(f => {
+                if (f?.FIELD1 === 'Número Pedido' || f?.FIELD1 === 'Cliente') return;
+                const sku     = String(f?.FIELD3 ?? '').trim();
+                const nomeRaw = String(f?.FIELD12 ?? '').trim();
+                const nome    = nomeRaw.includes(' - ') ? nomeRaw.split(' - ').slice(1).join(' - ') : nomeRaw;
+                if (sku) APP.db.fornecedorMap.set(sku, nome || 'Fornecedor Indefinido');
+            });
+
+            // ── Agendamentos ──────────────────────────────────────────
+            const _agMap = new Map();
+            APP.db._rawFornecedor.forEach(f => {
+                if (f?.FIELD1 === 'Número Pedido' || f?.FIELD1 === 'Cliente') return;
+                const sku = String(f?.FIELD3 ?? '').trim();
+                if (!sku) return;
+                const nomeRaw = String(f?.FIELD12 ?? '').trim();
+                const nome    = nomeRaw.includes(' - ') ? nomeRaw.split(' - ').slice(1).join(' - ') : nomeRaw;
+                const nf      = String(f['AGENDAMENTOS POR FORNECEDOR'] ?? '').trim();
+                const prev    = _agMap.get(sku);
+                if (prev) {
+                    prev.qtdAgendada   += safeFloat(f.FIELD5);
+                    prev.qtdConfirmada += safeFloat(f.FIELD6);
+                    if (!prev.pedidos.includes(String(f.FIELD1))) prev.pedidos.push(String(f.FIELD1));
+                    if (nf && !prev.nfs.includes(nf)) prev.nfs.push(nf);
+                } else {
+                    _agMap.set(sku, {
+                        sku,
+                        descForn:      String(f?.FIELD4 ?? '').trim(),
+                        fornecedor:    nome || 'Não identificado',
+                        nfs:           nf ? [nf] : [],
+                        pedidos:       [String(f.FIELD1)],
+                        qtdAgendada:   safeFloat(f.FIELD5),
+                        qtdConfirmada: safeFloat(f.FIELD6),
+                        dataInicio:    String(f.FIELD7 ?? '').substring(0, 10),
+                        dataFim:       String(f.FIELD8 ?? '').substring(0, 10),
+                        idAgendamento: String(f.FIELD9  ?? '').trim(),
+                        doca:          String(f.FIELD11 ?? '').trim(),
+                    });
+                }
+            });
+            APP.db._agMapRaw = _agMap;
+
+            // ── Outros dados ──────────────────────────────────────────
+            APP.db.auditoria = (Array.isArray(a) ? a : []).map((item, idx) => ({
+                id: `uc-${idx}`,
+                fornecedor: item?.cod_comprador ?? 'N/A',
+                desc:       item?.descricao    ?? 'N/A',
+                done: false,
+            }));
+
+            APP.db.movimento   = Array.isArray(m)    ? m    : Object.values(m ?? {});
+            APP.db.pdv         = Array.isArray(v)    ? v    : [];
+            APP.db.pdvAnterior = Array.isArray(vAnt) ? vAnt : [];
+            APP.db.pdvExtra    = { mesquita: vMesq ?? [], jacarepagua: vJaca ?? [], benfica: vBenf ?? [] };
+
+            APP.db.tarefas = (Array.isArray(tar) ? tar : []).map((tk, i) => ({
+                ...tk, id: tk.id ?? i, done: tk.done ?? false,
+                task: tk?.task ?? tk?.['Tarefa'] ?? 'Tarefa s/ descrição',
+            }));
+
+            APP._restoreFilaFromSession();
+
+            // ── Processamento ─────────────────────────────────────────
+            APP.processarEstoque(p);
+
+            APP.db.agendamentos = [...(APP.db._agMapRaw ?? new Map()).values()].map(ag => {
+                const prod = APP.db.produtos.find(p => p.id === ag.sku);
+                return {
+                    ...ag,
+                    desc:   prod?.desc          ?? ag.descForn ?? 'N/A',
+                    pkl:    prod?.pkl            ?? null,
+                    total:  prod?.total          ?? null,
+                    status: prod?.categoriaCor   ?? 'sem-estoque',
+                };
+            }).sort((a, b) => a.dataInicio.localeCompare(b.dataInicio));
+
+            APP.processarDueloAqua();
+            APP.processarBI_DualTrend();
+            APP.processarUCGlobal_DPA();
+            APP._detectarInconsistencias();
+
+            // ── Status ────────────────────────────────────────────────
+            const isServerMode = !!allData;
+            if (st) {
+                st.innerText = isServerMode ? '● K11 OMNI ONLINE ⚡ SERVER' : '● K11 OMNI ONLINE';
+                st.classList.add('status-online');
+            }
+
+            APP._setupPullToRefresh();
+            APP._setupSwipeFila();
+            APP._updateNavBadges();
+
+            const badgeEl = document.getElementById('mode-badge-header');
+            if (badgeEl) {
+                const mode = (typeof K11_MODE !== 'undefined') ? K11_MODE : 'ultra';
+                badgeEl.className = `mode-badge ${mode}`;
+                badgeEl.textContent = mode === 'lite' ? '⚡ LITE' : '🧠 ULTRA';
+            }
+
+            const defaultView = (typeof window._K11_DEFAULT_VIEW !== 'undefined')
+                ? window._K11_DEFAULT_VIEW : 'dash';
+
+            APP.view(defaultView);
+
+            if (APP._warnNoServer) APP._showNoServerWarning();
+
+            // Dispara evento k11:ready para PWA deep links
+            window.dispatchEvent(new Event('k11:ready'));
+
+            APP._serverLog('info', 'FRONTEND', 'K11 OMNI carregado com sucesso', {
+                produtos:   APP.db.produtos.length,
+                pdv:        APP.db.pdv.length,
+                tarefas:    APP.db.tarefas.length,
+                serverMode: isServerMode,
+            });
+
+        } catch (e) {
+            if (st) st.innerText = '⚠ ERRO DE CARREGAMENTO';
+            console.error('[K11 init]', e);
+            APP.ui.toast('Falha ao carregar dados. Tente novamente.', 'danger');
+            APP._serverLog('error', 'FRONTEND', `init() falhou: ${e.message}`);
+        }
+    },
+
+    // ── SERVER FETCH — usa JWT do sessionStorage ─────────────────
+    async _serverFetch(path, options = {}) {
+        const token = K11Auth.getToken();
+        const url   = `${K11_SERVER_URL}${path}`;
+
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+        try {
+            const r = await fetch(url, {
+                ...options,
+                signal: controller.signal,
+                headers: {
+                    'Content-Type':  'application/json',
+                    // JWT em vez de token estático hardcoded
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+                    ...(options.headers || {}),
+                },
+            });
+            clearTimeout(timer);
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return await r.json();
+        } catch (e) {
+            clearTimeout(timer);
+            throw e;
+        }
+    },
+
+    // ── SERVER LOG ────────────────────────────────────────────────
+    _serverLog(level, module, message, meta = null) {
+        const token = K11Auth.getToken();
+        if (!K11_SERVER_URL) return;
+        fetch(`${K11_SERVER_URL}/api/system/log`, {
+            method:  'POST',
+            headers: {
+                'Content-Type':  'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ level, module, message, meta }),
+        }).catch(() => {});
+    },
+
+    // ── TOGGLE TAREFA ─────────────────────────────────────────────
+    async toggleTarefaServer(id) {
+        try {
+            const res = await APP._serverFetch(`/api/data/tarefas/${id}/toggle`, { method: 'POST' });
+            if (res?.ok && res?.tarefa) {
+                const t = APP.db.tarefas.find(x => String(x.id) === String(id));
+                if (t) t.done = res.tarefa.done;
+                APP.view('detalheTarefas');
+            }
+        } catch (e) {
+            const t = APP.db.tarefas.find(x => x.id === id);
+            if (t) { t.done = !t.done; APP.view('detalheTarefas'); }
+        }
+    },
+
+    // ── FETCH LOCAL (fallback offline) ───────────────────────────
+    async _safeFetch(url, retries = FETCH_RETRY) {
+        const controller = new AbortController();
+        const timer      = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+        try {
+            const r = await fetch(url, { signal: controller.signal });
+            clearTimeout(timer);
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return await r.json();
+        } catch (e) {
+            clearTimeout(timer);
+            if (retries > 0) {
+                await new Promise(res => setTimeout(res, 400));
+                return APP._safeFetch(url, retries - 1);
+            }
+            const isFileProtocol = location.protocol === 'file:';
+            if (isFileProtocol) APP._warnNoServer = true;
+            console.warn(`[K11 fetch] Falhou: ${url}`, e?.message || e);
+            return [];
+        }
+    },
+
+    _showNoServerWarning() {
+        const st = document.getElementById('engine-status');
+        if (st) { st.innerHTML = '⚠ MODO DEMO — sem dados'; st.style.color = 'var(--warning, #eab308)'; }
+    },
+
+    // ── DELEGAÇÕES ────────────────────────────────────────────────
+    getCapacidade: (desc) => getCapacidade(desc),
+    processarEstoque(data)      { Processors.processarEstoque(data);           },
+    processarDueloAqua()        { Processors.processarDueloAqua();             },
+    processarBI_DualTrend()     { Processors.processarBI_DualTrend();          },
+    processarUCGlobal_DPA()     { Processors.processarUCGlobal_DPA();          },
+    _gerarAcoesPrioritarias()   { return Processors.gerarAcoesPrioritarias();  },
+    _detectarInconsistencias()  { Processors.detectarInconsistencias();        },
+
+    views:   Views,
+    actions: Actions,
+
+    // ── NAVEGAÇÃO ─────────────────────────────────────────────────
+    view(v, param) {
+        if (param?.classList) {
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            param.classList.add('active');
+        }
+        const stage = document.getElementById('stage');
+        if (!stage || !APP.views[v]) return;
+        const arg = typeof param === 'string' ? param : undefined;
+        stage.innerHTML = APP.views[v](arg);
+        window.scrollTo({ top: 0, behavior: 'instant' });
+        if (v === 'operacional') setTimeout(() => APP._setupSwipeFila(), 50);
+    },
+
+    // ── UI HELPERS ────────────────────────────────────────────────
+    _updateNavBadges() {
+        const rupturas = APP.db.produtos.filter(p => p.categoriaCor === 'red').length;
+        const gargalos = APP.db.ucGlobal.length;
+        document.querySelectorAll('[data-badge="rupturas"]').forEach(el => { el.dataset.count = rupturas > 0 ? rupturas : ''; });
+        document.querySelectorAll('[data-badge="gargalos"]').forEach(el => { el.dataset.count = gargalos > 0 ? gargalos : ''; });
+    },
+
+    toggleMode() {
+        const current  = (sessionStorage.getItem('k11_mode') || 'ultra').toLowerCase();
+        const next     = current === 'ultra' ? 'lite' : 'ultra';
+
+        try { sessionStorage.setItem('k11_mode', next); } catch {}
+
+        // Atualiza variável global e classe do body
+        window.K11_MODE = next;
+        document.body.classList.toggle('mode-lite', next === 'lite');
+
+        // Atualiza o badge
+        const badgeEl = document.getElementById('mode-badge-header');
+        if (badgeEl) {
+            badgeEl.className = `mode-badge ${next}`;
+            badgeEl.textContent = next === 'lite' ? '⚡ LITE' : '🧠 ULTRA';
+        }
+
+        // Ajusta a view padrão
+        window._K11_DEFAULT_VIEW = next === 'lite' ? 'estoque' : 'dash';
+
+        // Toast + navega pra view padrão do novo modo
+        APP.ui.toast(`Modo ${next.toUpperCase()} ativado`, 'info');
+        APP.view(window._K11_DEFAULT_VIEW);
+    },
+
+    _setupPullToRefresh() {
+        let startY = 0;
+        document.addEventListener('touchstart', e => { startY = e.touches[0].clientY; }, { passive: true });
+        document.addEventListener('touchend', e => {
+            const delta = e.changedTouches[0].clientY - startY;
+            if (delta > 70 && window.scrollY === 0) {
+                APP.ui.toast('Atualizando dados...', 'info');
+                setTimeout(() => APP.init(), 500);
+            }
+        }, { passive: true });
+    },
+
+    _setupSwipeFila() {
+        document.querySelectorAll('.swipe-item').forEach(el => {
+            const idx = parseInt(el.dataset.filaIdx, 10);
+            let startX = 0, isDragging = false;
+            el.addEventListener('touchstart', e => { startX = e.touches[0].clientX; isDragging = true; el.style.transition = 'none'; }, { passive: true });
+            el.addEventListener('touchmove',  e => { if (!isDragging) return; const dx = e.touches[0].clientX - startX; if (dx < 0) el.style.transform = `translateX(${dx}px)`; }, { passive: true });
+            el.addEventListener('touchend', e => {
+                if (!isDragging) return; isDragging = false;
+                const dx = e.changedTouches[0].clientX - startX;
+                el.style.transition = 'transform 0.3s, opacity 0.3s';
+                if (dx < -80) { el.style.transform = 'translateX(-110%)'; el.style.opacity = '0'; setTimeout(() => APP.actions.remFila(idx), 310); }
+                else { el.style.transform = 'translateX(0)'; }
+            }, { passive: true });
+        });
+    },
+
+    _saveFilaToSession()    { try { sessionStorage.setItem('k11_fila', JSON.stringify(APP.db.fila)); } catch {} },
+    _restoreFilaFromSession() {
+        try { const raw = sessionStorage.getItem('k11_fila'); if (raw) APP.db.fila = JSON.parse(raw); }
+        catch { APP.db.fila = []; }
+    },
+};
+
 window.APP = APP;
 
-console.log('[APP BOOT] ✅ Sistema de boot ativo e pronto');
+window.addEventListener('load', () => {
+    if (document.getElementById('engine-status')) APP.init();
+});
+
+// ── SERVICE WORKER: Auto-reload + botão de atualizar ─────────
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').then(reg => {
+
+        // 1️⃣ AUTO-RELOAD: recebe mensagem do SW quando há nova versão
+        navigator.serviceWorker.addEventListener('message', event => {
+            if (event.data?.type === 'SW_UPDATED') {
+                console.log('[K11 PWA] Nova versão detectada. Recarregando...');
+                window.location.reload();
+            }
+        });
+
+        // 2️⃣ BOTÃO DE ATUALIZAR: aparece quando há update pendente (waiting)
+        reg.addEventListener('updatefound', () => {
+            const newWorker = reg.installing;
+            newWorker?.addEventListener('statechange', () => {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    _mostrarBotaoAtualizar(reg);
+                }
+            });
+        });
+
+        // Verifica update ao abrir o app
+        reg.update().catch(() => {});
+
+    }).catch(err => console.warn('[K11 SW] Registro falhou:', err));
+}
+
+function _mostrarBotaoAtualizar(reg) {
+    const existente = document.getElementById('k11-update-btn');
+    if (existente) return;
+
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes k11-pulse {
+            0%, 100% { box-shadow: 0 4px 20px rgba(34,197,94,0.4); }
+            50%       { box-shadow: 0 4px 30px rgba(34,197,94,0.8); }
+        }
+    `;
+    document.head.appendChild(style);
+
+    const btn = document.createElement('button');
+    btn.id = 'k11-update-btn';
+    btn.innerHTML = '🔄 Nova versão disponível — Toque para atualizar';
+    btn.style.cssText = `
+        position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+        background: #22c55e; color: #000; font-weight: 700; font-size: 13px;
+        padding: 10px 20px; border-radius: 999px; border: none; z-index: 9999;
+        cursor: pointer; box-shadow: 0 4px 20px rgba(34,197,94,0.4);
+        white-space: nowrap; animation: k11-pulse 2s infinite;
+    `;
+    document.body.appendChild(btn);
+
+    btn.addEventListener('click', () => {
+        btn.innerHTML = '⏳ Atualizando...';
+        reg.waiting?.postMessage({ type: 'SKIP_WAITING' });
+        setTimeout(() => window.location.reload(), 300);
+    });
+}
