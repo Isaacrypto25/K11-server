@@ -471,9 +471,27 @@ const APP = {
 
 window.APP = APP;
 
-window.addEventListener('load', () => {
-    if (document.getElementById('engine-status')) APP.init();
-});
+// ── AUTO-INIT: Compatível com carregamento em qualquer momento ────
+function _initK11() {
+    const el = document.getElementById('engine-status');
+    if (!el) return;
+    if (typeof APP !== 'undefined' && typeof APP.init === 'function') {
+        console.log('[K11] Iniciando APP (readyState=' + document.readyState + ')...');
+        APP.init();
+    }
+}
+
+// Verifica estado do documento e agenda inicialização
+if (document.readyState === 'loading') {
+    // DOM ainda está carregando
+    document.addEventListener('DOMContentLoaded', () => setTimeout(_initK11, 50));
+} else {
+    // DOM já foi parseado
+    setTimeout(_initK11, 0);
+}
+
+// Fallback: Também tenta no load
+window.addEventListener('load', () => setTimeout(_initK11, 100));
 
 // ── SERVICE WORKER: Auto-reload + botão de atualizar ─────────
 if ('serviceWorker' in navigator) {
