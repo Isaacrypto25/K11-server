@@ -71,7 +71,7 @@
             <span class="material-symbols-outlined">barcode_scanner</span>
             <span>COLETA</span>
         </button>
-        <button class="nav-btn" id="k11-voice-btn" onclick="K11Voice.open()">
+        <button class="nav-btn" id="k11-voice-btn" onclick="K11VoiceEnhanced.open(APP?.pdvAtivo?.id, APP?.pdvAtivo?.nome)">
             <div class="voice-btn-ring">
                 <div class="voice-btn-pulse"></div>
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="flex-shrink:0">
@@ -129,10 +129,20 @@
     <script src="k11-key-voice.js"></script>
     <script src="k11-voice-id.js"></script>
     <script src="k11-brain-auxiliar.js"></script>
-    <script src="k11-voice-assistant.js"></script>
+    <!-- k11-voice-assistant.js DESATIVADO — substituído por k11_ai_voice_enhanced.js (fase 9.6) -->
+    <!-- <script src="k11-voice-assistant.js"></script> -->
     <script src="k11-float-ai.js"></script>
 
-    
+    <!-- ════════════════════════════════════════════════════
+         FASE 9.5: PRICE INTELLIGENCE
+         Self-contained: injeta HTML, CSS e SSE automaticamente
+         ════════════════════════════════════════════════════ -->
+    <script src="k11-price-intel.js"></script>
+
+    <!-- ════════════════════════════════════════════════════
+         FASE 9.6: AI VOICE ENHANCED (substitui voice-assistant)
+         ════════════════════════════════════════════════════ -->
+    <script src="k11_ai_voice_enhanced.js"></script>
 
     <script>
         if (!localStorage.getItem("k11_onboarding_v4")) location.href = "k11-onboarding.html";
