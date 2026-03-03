@@ -2,19 +2,896 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>K11 Onboarding Preview</title>
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
-<style>body{background:#060810;margin:0}</style>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>K11 OMNI — Onboarding</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;height:100%;overflow:hidden;background:#030509}
+
+/* ══════════════════════════════════════════════
+   ROOT
+══════════════════════════════════════════════ */
+:root{
+  --ob-bg:    #030509;
+  --ob-bg2:   #080c18;
+  --ob-bg3:   #0d1120;
+  --ob-white: #e8edf5;
+  --ob-muted: #3a4060;
+  --ob-border:rgba(255,255,255,0.06);
+  --acc: #ff8c00;
+  --acc-r: 255; --acc-g: 140; --acc-b: 0;
+}
+
+/* ══════════════════════════════════════════════
+   SHELL
+══════════════════════════════════════════════ */
+#ob{
+  position:fixed;inset:0;z-index:99999;
+  background:var(--ob-bg);
+  font-family:'Syne',sans-serif;
+  overflow:hidden;
+  animation:ob-enter .5s cubic-bezier(.2,0,.2,1) both;
+}
+#ob.closing{animation:ob-leave .4s cubic-bezier(.4,0,1,1) forwards}
+
+/* NOISE TEXTURE */
+#ob::before{
+  content:'';position:absolute;inset:0;z-index:50;pointer-events:none;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  background-size:180px;opacity:.4;
+}
+/* SCANLINES */
+#ob::after{
+  content:'';position:absolute;inset:0;z-index:51;pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.07) 2px,rgba(0,0,0,.07) 4px);
+}
+
+/* ══════════════════════════════════════════════
+   AMBIENT + PARTICLES CANVAS
+══════════════════════════════════════════════ */
+#ob-canvas{
+  position:absolute;inset:0;z-index:1;
+  pointer-events:none;
+  transition:opacity .8s;
+}
+
+/* ══════════════════════════════════════════════
+   GRID
+══════════════════════════════════════════════ */
+#ob-grid{
+  position:absolute;inset:0;z-index:2;pointer-events:none;
+  background-image:
+    linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px);
+  background-size:44px 44px;
+  mask-image:radial-gradient(ellipse 80% 60% at 50% 0%,black 0%,transparent 70%);
+}
+
+/* ══════════════════════════════════════════════
+   PROGRESS LINE
+══════════════════════════════════════════════ */
+#ob-prog{
+  position:absolute;top:0;left:0;right:0;height:2px;
+  background:rgba(255,255,255,.04);z-index:60;
+  overflow:hidden;
+}
+#ob-prog::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.3),transparent);
+  transform:translateX(-100%);
+  animation:ob-shimmer 2s linear infinite;
+}
+#ob-prog-fill{
+  height:100%;
+  transition:width .6s cubic-bezier(.4,0,.2,1), background .7s ease;
+  position:relative;z-index:1;
+}
+
+/* ══════════════════════════════════════════════
+   TOPBAR
+══════════════════════════════════════════════ */
+#ob-topbar{
+  position:absolute;top:0;left:0;right:0;
+  padding:env(safe-area-inset-top,0px) 0 0;
+  z-index:55;
+}
+#ob-topbar-inner{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:52px 24px 0;
+}
+#ob-logo{display:flex;align-items:center;gap:10px}
+#ob-logo-mark{
+  width:36px;height:36px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Space Mono',monospace;font-size:14px;font-weight:700;
+  transition:all .7s cubic-bezier(.4,0,.2,1);
+  position:relative;overflow:hidden;
+}
+#ob-logo-mark::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(255,255,255,.15),transparent);
+}
+#ob-logo-text{
+  font-size:11px;font-weight:700;letter-spacing:3px;
+  color:rgba(232,237,245,.35);font-family:'Space Mono',monospace;
+}
+#ob-skip{
+  background:none;border:1px solid rgba(255,255,255,.08);
+  font-family:'Space Mono',monospace;font-size:9px;letter-spacing:2px;
+  color:rgba(255,255,255,.22);cursor:pointer;
+  padding:7px 14px;border-radius:20px;
+  transition:all .25s;
+}
+#ob-skip:active{opacity:.6}
+
+/* ══════════════════════════════════════════════
+   SLIDE TRACK
+══════════════════════════════════════════════ */
+#ob-track-wrap{position:absolute;inset:0;overflow:hidden;z-index:5}
+#ob-track{
+  display:flex;height:100%;
+  will-change:transform;
+}
+
+.ob-slide{
+  min-width:100%;height:100%;
+  display:flex;flex-direction:column;
+  padding:128px 28px 0;
+  position:relative;
+}
+
+/* TEXT CONTENT */
+.ob-eyebrow{
+  font-family:'Space Mono',monospace;font-size:9px;letter-spacing:4px;
+  color:rgba(255,255,255,.25);margin-bottom:14px;
+  display:flex;align-items:center;gap:10px;
+  opacity:0;transform:translateY(10px);
+}
+.ob-eyebrow::before{content:'';width:16px;height:1px;background:currentColor;flex-shrink:0}
+
+.ob-headline{
+  font-size:clamp(28px,8.5vw,40px);font-weight:900;line-height:1.07;
+  letter-spacing:-1.5px;color:var(--ob-white);margin-bottom:14px;
+  opacity:0;transform:translateY(14px);
+}
+.ob-sub{
+  font-family:'Space Mono',monospace;font-size:11px;line-height:1.85;
+  color:rgba(232,237,245,.38);max-width:295px;margin-bottom:18px;
+  opacity:0;transform:translateY(10px);
+}
+.ob-stat{
+  display:inline-flex;align-items:center;gap:12px;
+  padding:7px 16px 7px 10px;border-radius:100px;border:1px solid;
+  width:fit-content;margin-bottom:24px;
+  opacity:0;transform:translateY(8px);
+  backdrop-filter:blur(10px);
+}
+.ob-stat-dot{width:7px;height:7px;border-radius:50%;animation:ob-blink 1.8s ease-in-out infinite}
+.ob-stat-val{font-family:'Space Mono',monospace;font-size:12px;font-weight:700}
+.ob-stat-lbl{font-family:'Space Mono',monospace;font-size:8px;letter-spacing:1px;color:rgba(255,255,255,.28)}
+
+/* TEXT ANIMATION CLASS */
+.ob-slide.active .ob-eyebrow{animation:ob-txt-in .5s .05s cubic-bezier(.2,0,.2,1) forwards}
+.ob-slide.active .ob-headline{animation:ob-txt-in .5s .1s cubic-bezier(.2,0,.2,1) forwards}
+.ob-slide.active .ob-sub{animation:ob-txt-in .5s .17s cubic-bezier(.2,0,.2,1) forwards}
+.ob-slide.active .ob-stat{animation:ob-txt-in .5s .22s cubic-bezier(.2,0,.2,1) forwards}
+
+/* ══════════════════════════════════════════════
+   VISUAL AREAS
+══════════════════════════════════════════════ */
+.ob-visual{flex:1;position:relative;overflow:hidden}
+
+/* ─── SLIDE 1: STOCK SVG ─── */
+.ob-stock-wrap{
+  position:absolute;inset:0;
+  display:flex;flex-direction:column;justify-content:flex-end;
+  padding-bottom:12px;gap:6px;
+}
+.ob-srow{
+  display:flex;align-items:center;gap:9px;
+  background:rgba(255,255,255,.025);
+  border:1px solid rgba(255,255,255,.05);
+  border-radius:10px;padding:8px 12px;
+  transform:translateX(105%);opacity:0;
+  will-change:transform,opacity;
+}
+.ob-slide.active .ob-srow:nth-child(1){animation:ob-slidein .55s .28s cubic-bezier(.2,0,.2,1) forwards}
+.ob-slide.active .ob-srow:nth-child(2){animation:ob-slidein .55s .36s cubic-bezier(.2,0,.2,1) forwards}
+.ob-slide.active .ob-srow:nth-child(3){animation:ob-slidein .55s .44s cubic-bezier(.2,0,.2,1) forwards}
+.ob-slide.active .ob-srow:nth-child(4){animation:ob-slidein .55s .52s cubic-bezier(.2,0,.2,1) forwards}
+.ob-slide.active .ob-srow:nth-child(5){animation:ob-slidein .55s .60s cubic-bezier(.2,0,.2,1) forwards}
+
+.ob-sdot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.ob-sname{flex:1;font-family:'Space Mono',monospace;font-size:9px;color:rgba(255,255,255,.55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ob-sbar-wrap{width:68px;height:3px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden}
+.ob-sbar{height:100%;border-radius:2px;transform:scaleX(0);transform-origin:left}
+.ob-slide.active .ob-sbar{animation:ob-grow .9s .7s cubic-bezier(.4,0,.2,1) forwards}
+.ob-sqty{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;min-width:24px;text-align:right}
+
+/* ─── SLIDE 2: QUEUE ─── */
+.ob-queue-wrap{
+  position:absolute;inset:0;
+  display:flex;flex-direction:column;justify-content:flex-end;
+  padding-bottom:12px;gap:7px;
+}
+.ob-qitem{
+  display:flex;align-items:center;gap:11px;
+  background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.05);
+  border-radius:12px;padding:11px 13px;
+  transform:translateX(105%);opacity:0;
+  will-change:transform,opacity;
+}
+.ob-slide.active .ob-qitem:nth-child(1){animation:ob-slidein .55s .28s cubic-bezier(.2,0,.2,1) forwards}
+.ob-slide.active .ob-qitem:nth-child(2){animation:ob-slidein .55s .38s cubic-bezier(.2,0,.2,1) forwards}
+.ob-slide.active .ob-qitem:nth-child(3){animation:ob-slidein .55s .48s cubic-bezier(.2,0,.2,1) forwards}
+.ob-qitem.done{border-color:rgba(0,255,136,.18);background:rgba(0,255,136,.035)}
+.ob-qcheck{width:24px;height:24px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px}
+.ob-qinfo{flex:1;min-width:0}
+.ob-qsku{font-family:'Space Mono',monospace;font-size:9px;color:rgba(255,255,255,.22);margin-bottom:2px}
+.ob-qname{font-size:12px;font-weight:700;color:var(--ob-white);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ob-qloc{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.5px;padding:3px 9px;border-radius:7px;flex-shrink:0}
+.ob-swipe-hint{
+  text-align:center;padding:10px 0 2px;
+  font-family:'Space Mono',monospace;font-size:9px;letter-spacing:2px;
+  color:rgba(255,255,255,.1);
+  opacity:0;
+  animation:none !important;
+}
+.ob-slide.active .ob-swipe-hint{animation:ob-pulse-text 2s .9s ease-in-out infinite !important}
+
+/* ─── SLIDE 3: VOICE ─── */
+.ob-voice-wrap{
+  position:absolute;inset:0;
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:flex-end;gap:14px;padding-bottom:16px;
+}
+.ob-vorb{
+  width:96px;height:96px;border-radius:50%;position:relative;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
+}
+.ob-vring{
+  position:absolute;border-radius:50%;
+  border:1px solid rgba(0,212,255,.15);
+  opacity:0;
+}
+.ob-slide.active .ob-vring:nth-child(1){animation:ob-ring-in .6s .3s ease forwards, ob-ring-pulse 2.5s .9s ease-in-out infinite}
+.ob-slide.active .ob-vring:nth-child(2){animation:ob-ring-in .6s .5s ease forwards, ob-ring-pulse 2.5s 1.1s ease-in-out infinite}
+.ob-slide.active .ob-vring:nth-child(3){animation:ob-ring-in .6s .7s ease forwards, ob-ring-pulse 2.5s 1.3s ease-in-out infinite}
+.ob-vring:nth-child(1){inset:-12px}
+.ob-vring:nth-child(2){inset:-26px;border-color:rgba(0,212,255,.1)}
+.ob-vring:nth-child(3){inset:-42px;border-color:rgba(0,212,255,.06)}
+.ob-vmic{
+  width:100%;height:100%;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;font-size:32px;
+  background:rgba(0,212,255,.07);border:1px solid rgba(0,212,255,.18);
+  opacity:0;transform:scale(.7);
+}
+.ob-slide.active .ob-vmic{animation:ob-pop .5s .2s cubic-bezier(.2,0,.2,1) forwards}
+
+.ob-vwaves{display:flex;align-items:center;gap:4px;height:28px;opacity:0}
+.ob-slide.active .ob-vwaves{animation:ob-fadein .4s .55s ease forwards}
+.ob-vbar{width:3px;border-radius:2px;background:rgba(0,212,255,.5)}
+.ob-slide.active .ob-vbar{animation:ob-wave 1.1s ease-in-out infinite}
+
+.ob-vbubble{
+  background:rgba(0,212,255,.055);border:1px solid rgba(0,212,255,.13);
+  border-radius:16px;padding:12px 18px;
+  font-family:'Space Mono',monospace;font-size:11px;
+  color:rgba(0,212,255,.75);text-align:center;max-width:270px;line-height:1.75;
+  opacity:0;transform:translateY(12px);
+}
+.ob-slide.active .ob-vbubble{animation:ob-txt-in .6s .65s cubic-bezier(.2,0,.2,1) forwards}
+
+/* ─── SLIDE 4: BETA ─── */
+.ob-beta-wrap{
+  position:absolute;inset:0;
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:20px;padding:0 8px 60px;
+}
+.ob-beta-badge{
+  display:flex;align-items:center;gap:10px;
+  padding:8px 20px;border-radius:100px;
+  background:rgba(255,208,0,.08);
+  border:1px solid rgba(255,208,0,.2);
+  opacity:0;
+}
+.ob-slide.active .ob-beta-badge{animation:ob-txt-in .5s .2s cubic-bezier(.2,0,.2,1) forwards}
+.ob-beta-badge-dot{width:7px;height:7px;border-radius:50%;background:#ffd000;animation:ob-blink 1.5s infinite}
+.ob-beta-badge-text{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:3px;color:#ffd000;font-weight:700}
+
+.ob-beta-cards{display:flex;flex-direction:column;gap:8px;width:100%;max-width:320px}
+.ob-beta-card{
+  display:flex;align-items:flex-start;gap:12px;
+  background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.05);
+  border-radius:12px;padding:12px 14px;
+  opacity:0;transform:translateY(12px);
+}
+.ob-slide.active .ob-beta-card:nth-child(1){animation:ob-txt-in .5s .35s cubic-bezier(.2,0,.2,1) forwards}
+.ob-slide.active .ob-beta-card:nth-child(2){animation:ob-txt-in .5s .45s cubic-bezier(.2,0,.2,1) forwards}
+.ob-slide.active .ob-beta-card:nth-child(3){animation:ob-txt-in .5s .55s cubic-bezier(.2,0,.2,1) forwards}
+.ob-beta-card-icon{font-size:18px;flex-shrink:0;margin-top:1px}
+.ob-beta-card-text-title{font-size:12px;font-weight:700;color:var(--ob-white);margin-bottom:3px}
+.ob-beta-card-text-desc{font-family:'Space Mono',monospace;font-size:9px;line-height:1.65;color:rgba(255,255,255,.35)}
+
+.ob-beta-footer{
+  font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1.5px;
+  color:rgba(255,255,255,.18);text-align:center;line-height:1.8;
+  opacity:0;
+}
+.ob-slide.active .ob-beta-footer{animation:ob-txt-in .5s .7s cubic-bezier(.2,0,.2,1) forwards}
+
+/* ══════════════════════════════════════════════
+   SVG ICONS (animated)
+══════════════════════════════════════════════ */
+.ob-svg-icon{display:block}
+.ob-svg-icon path,.ob-svg-icon circle,.ob-svg-icon rect,.ob-svg-icon line{
+  stroke-dasharray:300;stroke-dashoffset:300;
+}
+.ob-slide.active .ob-svg-icon path,
+.ob-slide.active .ob-svg-icon circle,
+.ob-slide.active .ob-svg-icon rect{
+  animation:ob-draw 1.2s .3s cubic-bezier(.4,0,.2,1) forwards;
+}
+
+/* ══════════════════════════════════════════════
+   BOTTOM
+══════════════════════════════════════════════ */
+#ob-bottom{
+  position:absolute;bottom:0;left:0;right:0;
+  padding:0 28px calc(env(safe-area-inset-bottom,0px) + 36px);
+  z-index:55;
+  display:flex;flex-direction:column;align-items:center;gap:16px;
+}
+#ob-dots{display:flex;gap:6px;align-items:center}
+.ob-dot{
+  height:4px;border-radius:2px;
+  background:rgba(255,255,255,.13);
+  transition:all .45s cubic-bezier(.4,0,.2,1);cursor:pointer;
+}
+.ob-dot.active{width:28px}
+.ob-dot:not(.active){width:4px}
+#ob-btn{
+  width:100%;padding:17px;border-radius:15px;
+  font-family:'Syne',sans-serif;font-size:14px;font-weight:900;letter-spacing:2.5px;
+  cursor:pointer;border:none;
+  transition:all .5s cubic-bezier(.4,0,.2,1);
+  position:relative;overflow:hidden;
+}
+#ob-btn::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(255,255,255,.12),transparent);
+  pointer-events:none;
+}
+#ob-btn:active{transform:scale(.97)}
+
+/* ══════════════════════════════════════════════
+   KEYFRAMES
+══════════════════════════════════════════════ */
+@keyframes ob-enter{
+  from{opacity:0;transform:scale(.96) translateY(8px)}
+  to{opacity:1;transform:scale(1) translateY(0)}
+}
+@keyframes ob-leave{
+  to{opacity:0;transform:scale(1.03) translateY(-6px)}
+}
+@keyframes ob-txt-in{
+  to{opacity:1;transform:translateY(0)}
+}
+@keyframes ob-slidein{
+  to{transform:translateX(0);opacity:1}
+}
+@keyframes ob-grow{to{transform:scaleX(1)}}
+@keyframes ob-pop{to{opacity:1;transform:scale(1)}}
+@keyframes ob-fadein{to{opacity:1}}
+@keyframes ob-blink{0%,100%{opacity:1}50%{opacity:.15}}
+@keyframes ob-pulse-text{0%,100%{opacity:.1}50%{opacity:.45}}
+@keyframes ob-shimmer{to{transform:translateX(100%)}}
+@keyframes ob-draw{to{stroke-dashoffset:0}}
+@keyframes ob-ring-in{to{opacity:1}}
+@keyframes ob-ring-pulse{
+  0%,100%{transform:scale(1);opacity:1}
+  50%{transform:scale(1.06);opacity:.4}
+}
+@keyframes ob-wave{
+  0%,100%{transform:scaleY(1)}50%{transform:scaleY(.25)}
+}
+
+/* SLIDE TRANSITION */
+.ob-slide-enter-left{animation:ob-enter-left .45s cubic-bezier(.2,0,.2,1) forwards}
+.ob-slide-enter-right{animation:ob-enter-right .45s cubic-bezier(.2,0,.2,1) forwards}
+.ob-slide-exit-left{animation:ob-exit-left .45s cubic-bezier(.2,0,.2,1) forwards}
+.ob-slide-exit-right{animation:ob-exit-right .45s cubic-bezier(.2,0,.2,1) forwards}
+
+@keyframes ob-enter-left{from{transform:translateX(100%) scale(.95);opacity:0}to{transform:translateX(0) scale(1);opacity:1}}
+@keyframes ob-enter-right{from{transform:translateX(-100%) scale(.95);opacity:0}to{transform:translateX(0) scale(1);opacity:1}}
+@keyframes ob-exit-left{from{transform:translateX(0) scale(1);opacity:1}to{transform:translateX(-100%) scale(.95);opacity:0}}
+@keyframes ob-exit-right{from{transform:translateX(0) scale(1);opacity:1}to{transform:translateX(100%) scale(.95);opacity:0}}
+</style>
 </head>
 <body>
-<!-- Simula o dashboard por trás -->
-<div style="color:#4a5068;font-family:monospace;padding:40px;font-size:12px">dashboard.html carregado...</div>
+
+<div id="ob">
+  <!-- CANVAS PARTICLES -->
+  <canvas id="ob-canvas"></canvas>
+  <div id="ob-grid"></div>
+
+  <!-- PROGRESS -->
+  <div id="ob-prog"><div id="ob-prog-fill"></div></div>
+
+  <!-- TOPBAR -->
+  <div id="ob-topbar">
+    <div id="ob-topbar-inner">
+      <div id="ob-logo">
+        <div id="ob-logo-mark">K</div>
+        <div id="ob-logo-text">K11 OMNI</div>
+      </div>
+      <button id="ob-skip">PULAR</button>
+    </div>
+  </div>
+
+  <!-- TRACK -->
+  <div id="ob-track-wrap">
+    <div id="ob-track">
+
+      <!-- ══ SLIDE 1: RUPTURA ══ -->
+      <div class="ob-slide" data-acc="#ff8c00" data-accr="255,140,0">
+        <div class="ob-eyebrow">ESTOQUE · TEMPO REAL</div>
+        <div class="ob-headline">Você vê a ruptura<br><span style="color:#ff8c00">antes dela</span><br>acontecer.</div>
+        <div class="ob-sub">Cada produto com cor de alerta. Vermelho, amarelo, verde. Sem planilha. Sem achismo.</div>
+        <div class="ob-stat" style="background:rgba(255,140,0,.07);border-color:rgba(255,140,0,.2)">
+          <div class="ob-stat-dot" style="background:#ff8c00;box-shadow:0 0 8px rgba(255,140,0,.6)"></div>
+          <div>
+            <div class="ob-stat-val" style="color:#ff8c00">847 SKUs</div>
+            <div class="ob-stat-lbl">monitorados agora</div>
+          </div>
+        </div>
+        <div class="ob-visual">
+          <div class="ob-stock-wrap">
+            <!-- Animated SVG alert icon -->
+            <div style="position:absolute;top:0;right:4px;opacity:.25">
+              <svg width="56" height="56" viewBox="0 0 56 56" fill="none" class="ob-svg-icon">
+                <circle cx="28" cy="28" r="20" stroke="#ff8c00" stroke-width="1.5"/>
+                <circle cx="28" cy="28" r="26" stroke="#ff8c00" stroke-width=".5" stroke-dasharray="4 3"/>
+                <path d="M28 18v12M28 36v2" stroke="#ff8c00" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </div>
+            <div class="ob-srow">
+              <div class="ob-sdot" style="background:#ff4466;box-shadow:0 0 6px rgba(255,68,102,.7)"></div>
+              <div class="ob-sname">TUBO SOLD 20MM TIGRE</div>
+              <div class="ob-sbar-wrap"><div class="ob-sbar" style="background:#ff4466;width:12%"></div></div>
+              <div class="ob-sqty" style="color:#ff4466">12</div>
+            </div>
+            <div class="ob-srow">
+              <div class="ob-sdot" style="background:#ff4466;box-shadow:0 0 6px rgba(255,68,102,.7)"></div>
+              <div class="ob-sname">JOELHO 90 CPVC 25MM</div>
+              <div class="ob-sbar-wrap"><div class="ob-sbar" style="background:#ff4466;width:8%"></div></div>
+              <div class="ob-sqty" style="color:#ff4466">8</div>
+            </div>
+            <div class="ob-srow">
+              <div class="ob-sdot" style="background:#ffd000;box-shadow:0 0 6px rgba(255,208,0,.6)"></div>
+              <div class="ob-sname">CAIXA DESC 6,8L TIGRE</div>
+              <div class="ob-sbar-wrap"><div class="ob-sbar" style="background:#ffd000;width:45%"></div></div>
+              <div class="ob-sqty" style="color:#ffd000">45</div>
+            </div>
+            <div class="ob-srow">
+              <div class="ob-sdot" style="background:#00ff88;box-shadow:0 0 6px rgba(0,255,136,.6)"></div>
+              <div class="ob-sname">LUVA SOLD 32MM</div>
+              <div class="ob-sbar-wrap"><div class="ob-sbar" style="background:#00ff88;width:82%"></div></div>
+              <div class="ob-sqty" style="color:#00ff88">120</div>
+            </div>
+            <div class="ob-srow">
+              <div class="ob-sdot" style="background:#00ff88;box-shadow:0 0 6px rgba(0,255,136,.6)"></div>
+              <div class="ob-sname">TE SOLD 40MM TIGRE</div>
+              <div class="ob-sbar-wrap"><div class="ob-sbar" style="background:#00ff88;width:70%"></div></div>
+              <div class="ob-sqty" style="color:#00ff88">88</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ SLIDE 2: COLETA ══ -->
+      <div class="ob-slide" data-acc="#00ff88" data-accr="0,255,136">
+        <div class="ob-eyebrow">FILA · COLETA</div>
+        <div class="ob-headline">Sua fila na<br>palma da mão.<br><span style="color:#00ff88">Sem papel.</span></div>
+        <div class="ob-sub">Swipe pra marcar coletado. Pull pra atualizar. Cada peça no lugar certo, na hora certa.</div>
+        <div class="ob-stat" style="background:rgba(0,255,136,.05);border-color:rgba(0,255,136,.15)">
+          <div class="ob-stat-dot" style="background:#00ff88;box-shadow:0 0 8px rgba(0,255,136,.6)"></div>
+          <div>
+            <div class="ob-stat-val" style="color:#00ff88">&lt; 3s</div>
+            <div class="ob-stat-lbl">para carregar qualquer dado</div>
+          </div>
+        </div>
+        <div class="ob-visual">
+          <div class="ob-queue-wrap">
+            <!-- SVG Checkmark animated -->
+            <div style="position:absolute;top:0;right:4px;opacity:.2">
+              <svg width="52" height="52" viewBox="0 0 52 52" fill="none" class="ob-svg-icon">
+                <circle cx="26" cy="26" r="20" stroke="#00ff88" stroke-width="1.5"/>
+                <path d="M17 26l6 6 12-12" stroke="#00ff88" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <div class="ob-qitem done">
+              <div class="ob-qcheck" style="background:rgba(0,255,136,.12)"><span style="color:#00ff88">✓</span></div>
+              <div class="ob-qinfo">
+                <div class="ob-qsku">89011314</div>
+                <div class="ob-qname" style="text-decoration:line-through;opacity:.35">QUADRO DIST 12/16DISJ</div>
+              </div>
+              <div class="ob-qloc" style="color:rgba(0,255,136,.7);background:rgba(0,255,136,.07)">A-14-03</div>
+            </div>
+            <div class="ob-qitem">
+              <div class="ob-qcheck" style="background:rgba(255,255,255,.04)"><span style="color:rgba(255,255,255,.18);font-size:14px">○</span></div>
+              <div class="ob-qinfo">
+                <div class="ob-qsku">89197724</div>
+                <div class="ob-qname">JOELHO 90 SOLD 25MM</div>
+              </div>
+              <div class="ob-qloc" style="color:rgba(0,212,255,.7);background:rgba(0,212,255,.07)">B-02-11</div>
+            </div>
+            <div class="ob-qitem">
+              <div class="ob-qcheck" style="background:rgba(255,255,255,.04)"><span style="color:rgba(255,255,255,.18);font-size:14px">○</span></div>
+              <div class="ob-qinfo">
+                <div class="ob-qsku">89300064</div>
+                <div class="ob-qname">FITA VEDA ROSCA 18MM</div>
+              </div>
+              <div class="ob-qloc" style="color:rgba(255,140,0,.7);background:rgba(255,140,0,.07)">C-07-05</div>
+            </div>
+            <div class="ob-swipe-hint">← SWIPE PARA REMOVER DA FILA →</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ SLIDE 3: VOICE ══ -->
+      <div class="ob-slide" data-acc="#00d4ff" data-accr="0,212,255">
+        <div class="ob-eyebrow">VOZ · IA</div>
+        <div class="ob-headline">Fale.<br><span style="color:#00d4ff">O sistema</span><br>responde.</div>
+        <div class="ob-sub">Consulte estoque e pedidos sem tirar a luva. Groq AI processa sua voz na hora.</div>
+        <div class="ob-stat" style="background:rgba(0,212,255,.05);border-color:rgba(0,212,255,.15)">
+          <div class="ob-stat-dot" style="background:#00d4ff;box-shadow:0 0 8px rgba(0,212,255,.6)"></div>
+          <div>
+            <div class="ob-stat-val" style="color:#00d4ff">Groq AI</div>
+            <div class="ob-stat-lbl">processamento instantâneo</div>
+          </div>
+        </div>
+        <div class="ob-visual">
+          <div class="ob-voice-wrap">
+            <div class="ob-vorb">
+              <div class="ob-vring"></div>
+              <div class="ob-vring"></div>
+              <div class="ob-vring"></div>
+              <div class="ob-vmic">🎙️</div>
+            </div>
+            <div class="ob-vwaves">
+              <div class="ob-vbar" style="height:7px;animation-delay:0s"></div>
+              <div class="ob-vbar" style="height:14px;animation-delay:.08s"></div>
+              <div class="ob-vbar" style="height:22px;animation-delay:.16s"></div>
+              <div class="ob-vbar" style="height:28px;animation-delay:.24s"></div>
+              <div class="ob-vbar" style="height:28px;animation-delay:.32s"></div>
+              <div class="ob-vbar" style="height:22px;animation-delay:.24s"></div>
+              <div class="ob-vbar" style="height:14px;animation-delay:.16s"></div>
+              <div class="ob-vbar" style="height:7px;animation-delay:.08s"></div>
+            </div>
+            <div class="ob-vbubble">
+              "Quantos <strong style="color:#e8edf5">tubos 20mm</strong> tem?"
+              <div style="margin-top:8px;color:rgba(0,212,255,.5);font-size:10px">→ 12 unidades &nbsp;·&nbsp; ⚠ RUPTURA DETECTADA</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ SLIDE 4: BETA ══ -->
+      <div class="ob-slide" data-acc="#ffd000" data-accr="255,208,0">
+        <div class="ob-eyebrow">VERSÃO BETA</div>
+        <div class="ob-headline">Você está<br>entre os<br><span style="color:#ffd000">primeiros.</span></div>
+        <div class="ob-sub">Esta é uma versão beta em fase de testes. Sua operação é parte do desenvolvimento.</div>
+        <div class="ob-visual">
+          <div class="ob-beta-wrap">
+            <div class="ob-beta-badge">
+              <div class="ob-beta-badge-dot"></div>
+              <div class="ob-beta-badge-text">BETA · FASE DE TESTES</div>
+            </div>
+            <div class="ob-beta-cards">
+              <div class="ob-beta-card">
+                <div class="ob-beta-card-icon">🧪</div>
+                <div>
+                  <div class="ob-beta-card-text-title">Sistema em evolução</div>
+                  <div class="ob-beta-card-text-desc">Novos recursos são liberados a cada ciclo. O que você vê hoje é só o começo.</div>
+                </div>
+              </div>
+              <div class="ob-beta-card">
+                <div class="ob-beta-card-icon">🐛</div>
+                <div>
+                  <div class="ob-beta-card-text-title">Encontrou algo errado?</div>
+                  <div class="ob-beta-card-text-desc">Reporte ao responsável. Seu feedback molda o próximo update do K11 OMNI.</div>
+                </div>
+              </div>
+              <div class="ob-beta-card">
+                <div class="ob-beta-card-icon">⚡</div>
+                <div>
+                  <div class="ob-beta-card-text-title">Dados em tempo real</div>
+                  <div class="ob-beta-card-text-desc">Tudo conectado ao servidor Railway + Supabase. Online e sincronizado 24h.</div>
+                </div>
+              </div>
+            </div>
+            <div class="ob-beta-footer">
+              K11 OMNI ELITE · v3.0-beta<br>
+              Duque de Caxias, RJ · 2026
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /track -->
+  </div><!-- /track-wrap -->
+
+  <!-- BOTTOM -->
+  <div id="ob-bottom">
+    <div id="ob-dots">
+      <div class="ob-dot active" data-i="0"></div>
+      <div class="ob-dot" data-i="1"></div>
+      <div class="ob-dot" data-i="2"></div>
+      <div class="ob-dot" data-i="3"></div>
+    </div>
+    <button id="ob-btn">PRÓXIMO</button>
+  </div>
+</div>
 
 <script>
-// Força exibir mesmo se já tiver visto (para preview)
-localStorage.removeItem('k11_onboarding_done');
+(function(){
+'use strict';
+
+// ── PARTICLES CANVAS ──────────────────────────────────────────
+const canvas = document.getElementById('ob-canvas');
+const ctx    = canvas.getContext('2d');
+let W, H, particles = [], raf;
+let currentColor = {r:255,g:140,b:0};
+let targetColor  = {r:255,g:140,b:0};
+let colorT = 0;
+
+function resize(){
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Init particles
+for(let i=0;i<55;i++){
+  particles.push({
+    x: Math.random()*window.innerWidth,
+    y: Math.random()*window.innerHeight,
+    r: Math.random()*1.2+.2,
+    vx: (Math.random()-.5)*.25,
+    vy: (Math.random()-.5)*.25,
+    a: Math.random()*.4+.05,
+    pa: Math.random()*Math.PI*2,
+    ps: Math.random()*.008+.003,
+  });
+}
+
+function lerp(a,b,t){return a+(b-a)*t}
+
+function drawParticles(){
+  ctx.clearRect(0,0,W,H);
+  colorT = Math.min(1, colorT+.012);
+  currentColor.r = lerp(currentColor.r, targetColor.r, colorT*.08);
+  currentColor.g = lerp(currentColor.g, targetColor.g, colorT*.08);
+  currentColor.b = lerp(currentColor.b, targetColor.b, colorT*.08);
+
+  const cr = Math.round(currentColor.r);
+  const cg = Math.round(currentColor.g);
+  const cb = Math.round(currentColor.b);
+
+  // ambient glow top
+  const grad = ctx.createRadialGradient(W/2, -40, 0, W/2, -40, W*.7);
+  grad.addColorStop(0, `rgba(${cr},${cg},${cb},.09)`);
+  grad.addColorStop(1, 'transparent');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,W,H);
+
+  // particles
+  particles.forEach(p=>{
+    p.x += p.vx; p.y += p.vy;
+    p.pa += p.ps;
+    p.a = (.05+Math.sin(p.pa)*.08);
+    if(p.x<0)p.x=W; if(p.x>W)p.x=0;
+    if(p.y<0)p.y=H; if(p.y>H)p.y=0;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+    ctx.fillStyle = `rgba(${cr},${cg},${cb},${p.a})`;
+    ctx.fill();
+  });
+
+  raf = requestAnimationFrame(drawParticles);
+}
+drawParticles();
+
+// ── SLIDE CONTROLLER ─────────────────────────────────────────
+const SLIDES = document.querySelectorAll('.ob-slide');
+const track  = document.getElementById('ob-track');
+const dots   = document.querySelectorAll('.ob-dot');
+const btn    = document.getElementById('ob-btn');
+const skip   = document.getElementById('ob-skip');
+const fill   = document.getElementById('ob-prog-fill');
+const logoMk = document.getElementById('ob-logo-mark');
+
+const TOTAL = SLIDES.length;
+let cur = 0;
+let transitioning = false;
+
+const ACCENTS = [
+  {c:'#ff8c00',r:255,g:140,b:0,  g1:'#ff8c00',g2:'#cc6000'},
+  {c:'#00ff88',r:0,  g:255,b:136,g1:'#00ff88',g2:'#00b85e'},
+  {c:'#00d4ff',r:0,  g:212,b:255,g1:'#00d4ff',g2:'#007baa'},
+  {c:'#ffd000',r:255,g:208,b:0,  g1:'#ffd000',g2:'#cc9900'},
+];
+
+function setAccent(a){
+  targetColor = {r:a.r, g:a.g, b:a.b};
+  colorT = 0;
+  fill.style.background = a.c;
+  fill.style.width = `${((cur+1)/TOTAL)*100}%`;
+  logoMk.style.background   = `rgba(${a.r},${a.g},${a.b},.12)`;
+  logoMk.style.border        = `1px solid rgba(${a.r},${a.g},${a.b},.3)`;
+  logoMk.style.color         = a.c;
+  dots.forEach((d,i)=>{
+    d.classList.toggle('active',i===cur);
+    d.style.background = i===cur ? a.c : '';
+  });
+  const isLast = cur===TOTAL-1;
+  btn.textContent   = isLast ? '⚡  INICIAR K11 OMNI' : 'PRÓXIMO';
+  btn.style.background = isLast
+    ? `linear-gradient(135deg,${a.g1},${a.g2})`
+    : `rgba(${a.r},${a.g},${a.b},.08)`;
+  btn.style.color   = isLast ? '#000' : a.c;
+  btn.style.border  = isLast ? 'none' : `1px solid rgba(${a.r},${a.g},${a.b},.2)`;
+  btn.style.boxShadow = isLast ? `0 8px 40px rgba(${a.r},${a.g},${a.b},.35)` : 'none';
+}
+
+function goTo(n, dir){
+  if(transitioning || n===cur) return;
+  if(n<0||n>=TOTAL) return;
+  transitioning = true;
+
+  const prev = SLIDES[cur];
+  const next = SLIDES[n];
+
+  prev.classList.remove('active');
+
+  // Slide transition: CSS animation
+  const exitClass  = dir>0 ? 'ob-slide-exit-left'  : 'ob-slide-exit-right';
+  const enterClass = dir>0 ? 'ob-slide-enter-left' : 'ob-slide-enter-right';
+
+  prev.style.animation  = `${exitClass.replace('ob-slide-','')} .42s cubic-bezier(.4,0,.2,1) forwards`;
+  next.style.position   = 'absolute';
+  next.style.top        = '0';
+  next.style.left       = '0';
+  next.style.width      = '100%';
+  next.style.animation  = `${enterClass.replace('ob-slide-','')} .42s cubic-bezier(.2,0,.2,1) forwards`;
+
+  // reset all slides to relative except active ones
+  setTimeout(()=>{
+    SLIDES.forEach(s=>{s.style.animation='';s.style.position='';s.style.top='';s.style.left='';s.style.width='';});
+    cur = n;
+    next.classList.add('active');
+    setAccent(ACCENTS[cur]);
+    transitioning = false;
+  }, 440);
+
+  // Set accent immediately for color transition
+  setAccent(ACCENTS[n]);
+}
+
+// Override: use absolute positioning for custom transitions
+// Reinit layout
+function initSlides(){
+  track.style.position = 'relative';
+  track.style.transform = '';
+  track.style.display   = 'block';
+  track.style.height    = '100%';
+
+  SLIDES.forEach((s,i)=>{
+    s.style.position = 'absolute';
+    s.style.top      = '0';
+    s.style.left     = '0';
+    s.style.width    = '100%';
+    s.style.height   = '100%';
+    s.style.opacity  = i===0 ? '1' : '0';
+    s.style.pointerEvents = i===0 ? 'auto' : 'none';
+  });
+}
+
+// Better: use a simpler fade+scale transition
+function goToV2(n, dir){
+  if(transitioning || n===cur) return;
+  if(n<0||n>=TOTAL) return;
+  transitioning = true;
+
+  const prev = SLIDES[cur];
+  const next = SLIDES[n];
+
+  // Exit prev
+  prev.style.transition = 'opacity .35s ease, transform .35s cubic-bezier(.4,0,.2,1)';
+  prev.style.opacity    = '0';
+  prev.style.transform  = dir>0 ? 'translateX(-40px) scale(.97)' : 'translateX(40px) scale(.97)';
+  prev.style.pointerEvents = 'none';
+
+  // Prep next
+  next.style.transition = 'none';
+  next.style.opacity    = '0';
+  next.style.transform  = dir>0 ? 'translateX(50px) scale(.97)' : 'translateX(-50px) scale(.97)';
+
+  requestAnimationFrame(()=>{
+    requestAnimationFrame(()=>{
+      next.style.transition = 'opacity .4s ease, transform .4s cubic-bezier(.2,0,.2,1)';
+      next.style.opacity    = '1';
+      next.style.transform  = 'translateX(0) scale(1)';
+      next.style.pointerEvents = 'auto';
+      next.classList.add('active');
+
+      setTimeout(()=>{
+        prev.classList.remove('active');
+        prev.style.transition='';prev.style.opacity='0';prev.style.transform='';
+        cur = n;
+        setAccent(ACCENTS[cur]);
+        transitioning = false;
+      }, 420);
+    });
+  });
+
+  setAccent(ACCENTS[n]);
+}
+
+// init
+initSlides();
+SLIDES[0].style.opacity   = '1';
+SLIDES[0].style.transform = 'translateX(0) scale(1)';
+SLIDES[0].classList.add('active');
+setAccent(ACCENTS[0]);
+
+// events
+btn.addEventListener('click',()=>{
+  if(cur<TOTAL-1) goToV2(cur+1,1); else close();
+});
+skip.addEventListener('click',close);
+dots.forEach(d=>d.addEventListener('click',()=>{
+  const n=+d.dataset.i;
+  goToV2(n, n>cur?1:-1);
+}));
+
+// Swipe
+let sx=0,sy=0,stime=0;
+const ob = document.getElementById('ob');
+ob.addEventListener('touchstart',e=>{
+  sx=e.touches[0].clientX;
+  sy=e.touches[0].clientY;
+  stime=Date.now();
+},{passive:true});
+ob.addEventListener('touchend',e=>{
+  const dx=e.changedTouches[0].clientX-sx;
+  const dy=Math.abs(e.changedTouches[0].clientY-sy);
+  const dt=Date.now()-stime;
+  if(Math.abs(dx)>44&&dy<90&&dt<400){
+    dx<0?goToV2(cur+1,1):goToV2(cur-1,-1);
+  }
+},{passive:true});
+
+// Keyboard (desktop preview)
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight') goToV2(cur+1,1);
+  if(e.key==='ArrowLeft')  goToV2(cur-1,-1);
+  if(e.key==='Escape') close();
+});
+
+function close(){
+  localStorage.setItem('k11_onboarding_v2','1');
+  const o = document.getElementById('ob');
+  o.classList.add('closing');
+  cancelAnimationFrame(raf);
+  setTimeout(()=>{o.remove(); try{window.parent.postMessage('k11-onboarding-close','*')}catch(e){}}}, 420);
+}
+
+})();
 </script>
-<script src="k11-onboarding.js"></script>
 </body>
 </html>
