@@ -2,6 +2,8 @@
  * ╔═══════════════════════════════════════════════════════════════╗
  * ║          K11 OMNI ELITE — BACKEND SERVER v1.1.0               ║
  * ║          A alma do projeto. Tudo passa por aqui.              ║
+ * ║                                                               ║
+ * ║  ✅ COM FRONTEND MONITORING INTEGRADO                         ║
  * ╚═══════════════════════════════════════════════════════════════╝
  *
  * Stack: Node.js · Express · SQLite · Groq AI
@@ -22,6 +24,10 @@
  * GET  /api/ai/stream           → SSE: alertas e prioridades em tempo real
  * POST /api/ai/force-analysis   → força análise imediata
  * GET  /api/ai/state            → estado atual do supervisor
+ * 
+ * ✅ NOVO:
+ * POST /api/supervisor/frontend-ping    → heartbeat do frontend
+ * GET  /api/supervisor/frontend-health  → saúde do frontend
  */
 
 'use strict';
@@ -189,6 +195,45 @@ app.get('/api/ai/state', auth.requireAuth, (req, res) => {
   res.json({ ok: true, ...supervisor.getState() });
 });
 
+// ✅ NOVO: FRONTEND HEALTH MONITORING
+// Frontend envia heartbeat a cada 5 segundos
+app.post('/api/supervisor/frontend-ping', auth.requireAuth, (req, res) => {
+  const { clientId, appInitialized, k11LiveStarted, readyState, errors } = req.body;
+  
+  // Registra o ping no supervisor
+  if (typeof supervisor.registerFrontendPing === 'function') {
+    supervisor.registerFrontendPing(clientId, {
+      status: 'online',
+      appInitialized,
+      k11LiveStarted,
+      readyState,
+      errors,
+    });
+  }
+  
+  res.json({
+    ok: true,
+    message: 'Ping recebido',
+    timestamp: Date.now(),
+  });
+});
+
+// ✅ NOVO: Ver saúde do frontend
+app.get('/api/supervisor/frontend-health', auth.requireAuth, (req, res) => {
+  if (typeof supervisor.getState === 'function') {
+    const state = supervisor.getState();
+    res.json({
+      ok: true,
+      frontendHealth: state.frontendHealth || {},
+      suggestedAction: state.frontendHealth?.healthyClients === 0 
+        ? 'Todos os clientes offline ou não inicializados!' 
+        : null,
+    });
+  } else {
+    res.json({ ok: true, frontendHealth: {} });
+  }
+});
+
 
 // ─────────────────────────────────────────────────────────────
 // ROTAS PROTEGIDAS (Exigem Header: Authorization: Bearer <token>)
@@ -221,6 +266,8 @@ app.use((req, res) => {
       'GET  /api/ai/stream',
       'POST /api/ai/force-analysis',
       'GET  /api/ai/state',
+      'POST /api/supervisor/frontend-ping',
+      'GET  /api/supervisor/frontend-health',
     ],
   });
 });
@@ -257,6 +304,7 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
   // Chamada única aqui no startup — NÃO duplicar em outro lugar do arquivo
   supervisor.init(datastore);
 
+  logger.info('BOOT', '✅ Frontend monitoring ATIVO');
   logger.info('BOOT', '✓ K11 OMNI ELITE SERVER PRONTO');
 });
 
