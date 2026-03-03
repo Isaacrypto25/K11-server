@@ -13,8 +13,8 @@ const K11DataInject = (() => {
 
     // ── CONFIG ────────────────────────────────────────────────
     const SERVER   = K11_SERVER_URL;   // definido em k11-config.js
-    const TOKEN    = K11_SERVER_TOKEN; // definido em k11-config.js
     const TIMEOUT  = FETCH_TIMEOUT_MS; // definido em k11-config.js
+    // K11_SERVER_TOKEN foi removido por segurança — usa JWT dinâmico via K11Auth
 
     let _loadedAt  = null;
     let _retries   = 0;
@@ -31,7 +31,7 @@ const K11DataInject = (() => {
                 signal: controller.signal,
                 headers: {
                     'Content-Type':  'application/json',
-                    'Authorization': `Bearer ${TOKEN}`,
+                    ...(K11Auth.getToken() ? { 'Authorization': `Bearer ${K11Auth.getToken()}` } : {}),
                     ...(options.headers || {}),
                 },
             });
@@ -111,13 +111,8 @@ const K11DataInject = (() => {
             _retries++;
             console.error(`[K11DataInject] ❌ Erro ao carregar dados (tentativa ${_retries}):`, err.message);
 
-            // Tenta novamente após delay exponencial (máx 30s)
-            if (_retries <= FETCH_RETRY) {
-                const delay = Math.min(2000 * _retries, 30000);
-                console.log(`[K11DataInject] Tentando novamente em ${delay / 1000}s...`);
-                await new Promise(r => setTimeout(r, delay));
-                return inject(app);
-            }
+            // Sem retry no boot — falha rápido e deixa o app carregar
+            // (retry manual disponível via K11DataInject.reload(app))
 
             return false;
         }

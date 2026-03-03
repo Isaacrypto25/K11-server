@@ -187,24 +187,22 @@ const APP = {
         try {
             const t = Date.now();
 
-            // ── Carrega tudo via /api/data/all (JWT no header) ────────
+            // ── Carrega dados via K11DataInject (Supabase → Railway) ───
             let allData = null;
-            try {
-                const res = await APP._serverFetch('/api/data/all');
-                if (res?.ok && res?.data) {
-                    allData = res.data;
-                    APP._serverLog('info', 'FRONTEND', 'Dados carregados via servidor', {
-                        datasets: Object.keys(allData).length
-                    });
+            if (typeof K11DataInject !== 'undefined') {
+                try {
+                    const res = await APP._serverFetch('/api/data/all');
+                    if (res?.ok && res?.data && Object.keys(res.data).length > 0) {
+                        allData = res.data;
+                    }
+                } catch (e) {
+                    if (e.message?.includes('401')) {
+                        APP.ui.toast('Sessão expirada. Faça login novamente.', 'danger');
+                        setTimeout(() => APP.auth.logout(), 2000);
+                        return;
+                    }
+                    // servidor indisponível — continua com arrays vazios
                 }
-            } catch (e) {
-                // Se for 401, sessão expirou
-                if (e.message?.includes('401')) {
-                    APP.ui.toast('Sessão expirada. Faça login novamente.', 'danger');
-                    setTimeout(() => APP.auth.logout(), 2000);
-                    return;
-                }
-                APP._serverLog('warn', 'FRONTEND', 'Servidor indisponível', { error: e.message });
             }
 
             // ── Fallback para arquivos locais (modo offline/demo) ─────
