@@ -377,7 +377,17 @@ const K11Live = (() => {
 
         const _boot = () => {
             console.log('[K11Live] 🚀 Engine vivo iniciado');
-            _connectSSE();
+            
+            // FIX: Detecta se há dados carregados
+            const temDados = window.APP?.db?.produtos?.length > 0;
+            if (temDados) {
+                _connectSSE(); // modo online com servidor
+                console.log('[K11Live] Modo: Online (SSE)');
+            } else {
+                console.warn('[K11Live] Sem dados carregados — ativando modo LOCAL (offline)');
+                _updateEngineStatus('local');
+            }
+            
             _cycleTimer = setInterval(_runLocalCycle, CYCLE_MS);
             _tickTimer  = setInterval(_tickMission,  TICK_MS);
             setTimeout(_runLocalCycle, 2000);
@@ -386,6 +396,7 @@ const K11Live = (() => {
         if (window.APP?.db?.produtos?.length > 0) {
             _boot();
         } else {
+            console.log('[K11Live] Aguardando evento k11:ready...');
             window.addEventListener('k11:ready', _boot, { once: true });
         }
     }

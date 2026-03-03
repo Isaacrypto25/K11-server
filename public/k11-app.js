@@ -196,169 +196,27 @@ const APP = {
                         allData = res.data;
                     }
                 } catch (e) {
-                    if (e.message?.includes('401')) {
-                        APP.ui.toast('Sessão expirada. Faça login novamente.', 'danger');
-                        setTimeout(() => APP.auth.logout(), 2000);
-                        return;
-                    }
-                    // servidor indisponível — continua com arrays vazios
-                }
-            }
-
-            // ── Fallback para arquivos locais (modo offline/demo) ─────
-            let p, a, m, v, vAnt, tar, vMesq, vJaca, vBenf, forn;
-
-            if (allData) {
-                p     = allData.produtos       || [];
-                a     = allData.auditoria      || [];
-                m     = allData.movimento      || [];
-                v     = allData.pdv            || [];
-                vAnt  = allData.pdvAnterior    || [];
-                tar   = allData.tarefas        || [];
-                vMesq = allData.pdvmesquita    || [];
-                vJaca = allData.pdvjacarepagua || [];
-                vBenf = allData.pdvbenfica     || [];
-                forn  = allData.fornecedor     || [];
-            } else {
-                [p, a, m, v, vAnt, tar, vMesq, vJaca, vBenf, forn] = await Promise.all([
-                    APP._safeFetch(`./produtos.json?t=${t}`),
-                    APP._safeFetch(`./auditoria.json?t=${t}`),
-                    APP._safeFetch(`./movimento.json?t=${t}`),
-                    APP._safeFetch(`./pdv.json?t=${t}`),
-                    APP._safeFetch(`./pdvAnterior.json?t=${t}`),
-                    APP._safeFetch(`./tarefas.json?t=${t}`),
-                    APP._safeFetch(`./pdvmesquita.json?t=${t}`),
-                    APP._safeFetch(`./pdvjacarepagua.json?t=${t}`),
-                    APP._safeFetch(`./pdvbenfica.json?t=${t}`),
-                    APP._safeFetch(`./fornecedor.json?t=${t}`),
-                ]);
-            }
-
-            // ── Fornecedor ────────────────────────────────────────────
-            APP.db._rawFornecedor = Array.isArray(forn) ? forn : [];
-            APP.db.fornecedorMap  = new Map();
-            APP.db._rawFornecedor.forEach(f => {
-                if (f?.FIELD1 === 'Número Pedido' || f?.FIELD1 === 'Cliente') return;
-                const sku     = String(f?.FIELD3 ?? '').trim();
-                const nomeRaw = String(f?.FIELD12 ?? '').trim();
-                const nome    = nomeRaw.includes(' - ') ? nomeRaw.split(' - ').slice(1).join(' - ') : nomeRaw;
-                if (sku) APP.db.fornecedorMap.set(sku, nome || 'Fornecedor Indefinido');
-            });
-
-            // ── Agendamentos ──────────────────────────────────────────
-            const _agMap = new Map();
-            APP.db._rawFornecedor.forEach(f => {
-                if (f?.FIELD1 === 'Número Pedido' || f?.FIELD1 === 'Cliente') return;
-                const sku = String(f?.FIELD3 ?? '').trim();
-                if (!sku) return;
-                const nomeRaw = String(f?.FIELD12 ?? '').trim();
-                const nome    = nomeRaw.includes(' - ') ? nomeRaw.split(' - ').slice(1).join(' - ') : nomeRaw;
-                const nf      = String(f['AGENDAMENTOS POR FORNECEDOR'] ?? '').trim();
-                const prev    = _agMap.get(sku);
-                if (prev) {
-                    prev.qtdAgendada   += safeFloat(f.FIELD5);
-                    prev.qtdConfirmada += safeFloat(f.FIELD6);
-                    if (!prev.pedidos.includes(String(f.FIELD1))) prev.pedidos.push(String(f.FIELD1));
-                    if (nf && !prev.nfs.includes(nf)) prev.nfs.push(nf);
-                } else {
-                    _agMap.set(sku, {
-                        sku,
-                        descForn:      String(f?.FIELD4 ?? '').trim(),
-                        fornecedor:    nome || 'Não identificado',
-                        nfs:           nf ? [nf] : [],
-                        pedidos:       [String(f.FIELD1)],
-                        qtdAgendada:   safeFloat(f.FIELD5),
-                        qtdConfirmada: safeFloat(f.FIELD6),
-                        dataInicio:    String(f.FIELD7 ?? '').substring(0, 10),
-                        dataFim:       String(f.FIELD8 ?? '').substring(0, 10),
-                        idAgendamento: String(f.FIELD9  ?? '').trim(),
-                        doca:          String(f.FIELD11 ?? '').trim(),
-                    });
-                }
-            });
-            APP.db._agMapRaw = _agMap;
-
-            // ── Outros dados ──────────────────────────────────────────
-            APP.db.auditoria = (Array.isArray(a) ? a : []).map((item, idx) => ({
-                id: `uc-${idx}`,
-                fornecedor: item?.cod_comprador ?? 'N/A',
-                desc:       item?.descricao    ?? 'N/A',
-                done: false,
-            }));
-
-            APP.db.movimento   = Array.isArray(m)    ? m    : Object.values(m ?? {});
-            APP.db.pdv         = Array.isArray(v)    ? v    : [];
-            APP.db.pdvAnterior = Array.isArray(vAnt) ? vAnt : [];
-            APP.db.pdvExtra    = { mesquita: vMesq ?? [], jacarepagua: vJaca ?? [], benfica: vBenf ?? [] };
-
-            APP.db.tarefas = (Array.isArray(tar) ? tar : []).map((tk, i) => ({
-                ...tk, id: tk.id ?? i, done: tk.done ?? false,
-                task: tk?.task ?? tk?.['Tarefa'] ?? 'Tarefa s/ descrição',
-            }));
-
-            APP._restoreFilaFromSession();
-
-            // ── Processamento ─────────────────────────────────────────
-            APP.processarEstoque(p);
-
-            APP.db.agendamentos = [...(APP.db._agMapRaw ?? new Map()).values()].map(ag => {
-                const prod = APP.db.produtos.find(p => p.id === ag.sku);
-                return {
-                    ...ag,
-                    desc:   prod?.desc          ?? ag.descForn ?? 'N/A',
-                    pkl:    prod?.pkl            ?? null,
-                    total:  prod?.total          ?? null,
-                    status: prod?.categoriaCor   ?? 'sem-estoque',
-                };
-            }).sort((a, b) => a.dataInicio.localeCompare(b.dataInicio));
-
-            APP.processarDueloAqua();
-            APP.processarBI_DualTrend();
-            APP.processarUCGlobal_DPA();
-            APP._detectarInconsistencias();
-
-            // ── Status ────────────────────────────────────────────────
-            const isServerMode = !!allData;
-            if (st) {
-                st.innerText = isServerMode ? '● K11 OMNI ONLINE ⚡ SERVER' : '● K11 OMNI ONLINE';
-                st.classList.add('status-online');
-            }
-
-            APP._setupPullToRefresh();
-            APP._setupSwipeFila();
-            APP._updateNavBadges();
-
-            const badgeEl = document.getElementById('mode-badge-header');
-            if (badgeEl) {
-                const mode = (typeof K11_MODE !== 'undefined') ? K11_MODE : 'ultra';
-                badgeEl.className = `mode-badge ${mode}`;
-                badgeEl.textContent = mode === 'lite' ? '⚡ LITE' : '🧠 ULTRA';
-            }
-
-            const defaultView = (typeof window._K11_DEFAULT_VIEW !== 'undefined')
-                ? window._K11_DEFAULT_VIEW : 'dash';
-
-            APP.view(defaultView);
-
-            if (APP._warnNoServer) APP._showNoServerWarning();
-
-            // Dispara evento k11:ready para o K11Live e PWA deep links
-            window.dispatchEvent(new Event('k11:ready'));
-
-            APP._serverLog('info', 'FRONTEND', 'K11 OMNI carregado com sucesso', {
-                produtos:   APP.db.produtos.length,
-                pdv:        APP.db.pdv.length,
-                tarefas:    APP.db.tarefas.length,
-                serverMode: isServerMode,
-            });
-
-        } catch (e) {
             if (st) st.innerText = '⚠ ERRO DE CARREGAMENTO';
-            console.error('[K11 init]', e);
+            console.error('[K11 init] ERRO DURANTE INICIALIZAÇÃO:', {
+                message: e.message,
+                stack: e.stack?.split('\n').slice(0, 3),
+                timestamp: new Date().toISOString(),
+            });
             APP.ui.toast('Falha ao carregar dados. Tente novamente.', 'danger');
             APP._serverLog('error', 'FRONTEND', `init() falhou: ${e.message}`);
+            
+            // Ainda assim renderiza uma view vazia, não deixa spinner infinito
+            const defaultView = (typeof window._K11_DEFAULT_VIEW !== 'undefined')
+                ? window._K11_DEFAULT_VIEW : 'dash';
+            APP.view(defaultView);
+        } finally {
+            // 🔥 FIX CRÍTICO: SEMPRE emite k11:ready, com ou sem erro
+            // Sem isso, K11Live.start() nunca é chamado e engine fica "BOOTING" forever
+            window.dispatchEvent(new Event('k11:ready'));
+            
+            const totalMs = Date.now() - t;
+            console.log(`[K11 init] ✓ Inicialização finalizada em ${totalMs}ms`);
         }
-    },
 
     // ── SERVER FETCH — usa JWT do sessionStorage ─────────────────
     async _serverFetch(path, options = {}) {
