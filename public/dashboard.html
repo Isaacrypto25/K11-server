@@ -37,7 +37,6 @@
                 <text x="77" y="58" font-family="'Inter', sans-serif" font-size="8" font-weight="800" fill="var(--text-muted)" letter-spacing="2.5">ELITE OPERATIONAL OS</text>
             </svg>
         </div>
-        <!-- Substituído por #k11-live-pill ao iniciar o LivePanel -->
         <div id="engine-status" class="mono label">BOOTING...</div>
         <span id="mode-badge-header" onclick="APP.toggleMode()"></span>
     </header>
@@ -45,7 +44,7 @@
     <main id="stage">
         <div class="centered" style="margin-top: 100px;">
             <div class="spinner"></div>
-            <p class="micro-label margin-t-10">Iniciando Kernel...</p>
+            <p class="micro-label margin-t-10">Inicializando Kernel...</p>
         </div>
     </main>
 
@@ -88,49 +87,98 @@
         </button>
     </nav>
 
-    <!-- 1. Config base -->
+    <!-- ════════════════════════════════════════════════════════════
+         FASE 1: INITIALIZATION MODE
+         ════════════════════════════════════════════════════════════ -->
     <script>
-        (function() {
+        (function initMode() {
             const mode = (sessionStorage.getItem('k11_mode') || 'ultra').toLowerCase();
             window.K11_MODE = mode;
             if (mode === 'lite') document.body.classList.add('mode-lite');
             window._K11_DEFAULT_VIEW = (mode === 'lite') ? 'estoque' : 'dash';
+            console.log('[INIT] Modo inicializado:', mode);
         })();
     </script>
+
+    <!-- ════════════════════════════════════════════════════════════
+         FASE 2: CONFIG & AUTH
+         ════════════════════════════════════════════════════════════ -->
     <script src="k11-config.js"></script>
     <script src="k11-setup.js"></script>
 
-    <!-- 2. Core -->
+    <!-- ════════════════════════════════════════════════════════════
+         FASE 3: CORE UTILITIES
+         ════════════════════════════════════════════════════════════ -->
     <script src="k11-utils.js"></script>
     <script src="k11-ui.js"></script>
+
+    <!-- ════════════════════════════════════════════════════════════
+         FASE 4: DATA & PROCESSING
+         ════════════════════════════════════════════════════════════ -->
     <script src="k11-processors.js"></script>
     <script src="k11-views.js"></script>
     <script src="k11-actions.js"></script>
-    <script src="k11-app.js"></script>
     <script src="k11-modal-regional.js"></script>
 
-    <!-- 3. Dados -->
+    <!-- ════════════════════════════════════════════════════════════
+         FASE 5: APP CORE (COm BOOT SYSTEM GARANTIDO)
+         ════════════════════════════════════════════════════════════ -->
+    <script src="k11-app.js"></script>
+
+    <!-- ════════════════════════════════════════════════════════════
+         FASE 6: DATA INJECTION
+         ════════════════════════════════════════════════════════════ -->
     <script src="k11-data-inject.js"></script>
 
-    <!-- 4. LIVE ENGINE — Sistema Vivo ════════════════════════════
-         engine: análise contínua, SSE, ciclo local a cada 5min
-         panel:  pill de status, drawer de prioridades, alertas toast
-         ════════════════════════════════════════════════════════ -->
+    <!-- ════════════════════════════════════════════════════════════
+         FASE 7: LIVE ENGINE & PANEL (SSE em tempo real)
+         ════════════════════════════════════════════════════════════ -->
     <script src="k11-live-engine.js"></script>
     <script src="k11-live-panel.js"></script>
 
-    <!-- 5. Voice stack -->
+    <!-- ════════════════════════════════════════════════════════════
+         FASE 8: VOICE STACK
+         ════════════════════════════════════════════════════════════ -->
     <script src="k11-key-voice.js"></script>
     <script src="k11-voice-id.js"></script>
     <script src="k11-brain-auxiliar.js"></script>
     <script src="k11-voice-assistant.js"></script>
     <script src="k11-float-ai.js"></script>
 
-    <!-- ✅ ADIÇÃO 1: Frontend Health Monitor (permite ao servidor detectar problemas) -->
+    <!-- ════════════════════════════════════════════════════════════
+         FASE 9: MONITORING
+         ════════════════════════════════════════════════════════════ -->
     <script src="k11-health-monitor.js"></script>
 
+    <!-- ════════════════════════════════════════════════════════════
+         FASE 10: FINAL SAFETY CHECK
+         ════════════════════════════════════════════════════════════ -->
     <script>
-        // Onboarding removido do boot — não bloqueia o acesso ao dashboard
+        // Se APP ainda não foi inicializado por qualquer motivo,
+        // forçar inicialização aqui como último recurso
+        (function finalSafetyCheck() {
+            const maxWaitTime = 15_000; // 15 segundos
+            const startTime = Date.now();
+            
+            const checkInit = setInterval(() => {
+                const elapsed = Date.now() - startTime;
+                
+                if (typeof APP !== 'undefined' && APP._initialized) {
+                    console.log('[FINAL CHECK] APP já foi inicializado ✓');
+                    clearInterval(checkInit);
+                    return;
+                }
+                
+                if (elapsed > maxWaitTime) {
+                    console.error('[FINAL CHECK] ❌ Timeout após 15s - forçando APP.init()');
+                    if (typeof APP !== 'undefined' && typeof APP.init === 'function') {
+                        APP.init();
+                    }
+                    clearInterval(checkInit);
+                    return;
+                }
+            }, 1000);
+        })();
     </script>
 </body>
 </html>

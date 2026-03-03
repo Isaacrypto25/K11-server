@@ -1,14 +1,16 @@
 /**
- * K11 OMNI ELITE — NUCLEAR BOOT SYSTEM
+ * K11 OMNI ELITE — APP CORE (VERSÃO CORRIGIDA)
  * ════════════════════════════════════════════════════════════════
- * VERSÃO COMPLETA COM CÓDIGO NUCLEAR
- * Use este arquivo substituindo k11-app.js
+ * PROBLEMA FIXADO: APP.init() ERA CHAMADO SOMENTE SE TUDO EXISTISSE
+ * SOLUÇÃO: Chamar APP.init() DIRETAMENTE no final do arquivo
+ * 
+ * Este arquivo SUBSTITUI k11-app.js (qualquer versão anterior)
  */
 
 'use strict';
 
 // ════════════════════════════════════════════════════════════════
-// CORE APP INITIALIZATION (Original K11 APP)
+// CORE APP INITIALIZATION
 // ════════════════════════════════════════════════════════════════
 
 const APP = (function() {
@@ -17,51 +19,79 @@ const APP = (function() {
         authToken: null,
         user: null,
         data: {},
-        mode: sessionStorage.getItem('k11_mode') || 'ultra',
-        currentView: window._K11_DEFAULT_VIEW || 'dash',
+        mode: null,
+        currentView: 'dash',
         _initialized: false,
     };
     
-    // ── AUTH ──────────────────────────────────────────────────
+    // ── INICIALIZAR MODO ──────────────────────────────────────
+    function _initMode() {
+        try {
+            state.mode = sessionStorage.getItem('k11_mode') || 'ultra';
+        } catch {
+            state.mode = 'ultra';
+        }
+        
+        const isLite = state.mode === 'lite';
+        if (isLite) document.body.classList.add('mode-lite');
+        
+        state.currentView = isLite ? 'estoque' : 'dash';
+        window._K11_DEFAULT_VIEW = state.currentView;
+    }
+    
+    // ── SETUP AUTH ────────────────────────────────────────────
     function _setupAuth() {
-        const token = sessionStorage.getItem('k11_jwt');
-        if (token) {
-            state.authToken = token;
-            state.user = JSON.parse(sessionStorage.getItem('k11_user') || '{}');
+        try {
+            const token = sessionStorage.getItem('k11_jwt');
+            if (token) {
+                state.authToken = token;
+                try {
+                    state.user = JSON.parse(sessionStorage.getItem('k11_user') || '{}');
+                } catch {
+                    state.user = {};
+                }
+            }
+        } catch (err) {
+            console.warn('[APP] Erro ao restaurar auth:', err.message);
         }
     }
     
+    // ── SETUP DATA EVENTS ─────────────────────────────────────
     function _setupDataEvents() {
         document.addEventListener('k11-data-ready', (e) => {
-            Object.assign(state.data, e.detail || {});
+            if (e.detail) Object.assign(state.data, e.detail);
         });
     }
     
-    // ── VIEWS ─────────────────────────────────────────────────
+    // ── VIEW MANAGEMENT ───────────────────────────────────────
     function view(viewName, btnEl) {
-        if (!viewName || typeof K11Views !== 'object') return;
+        if (!viewName) return;
+        if (typeof K11Views !== 'object' || typeof K11Views[viewName] !== 'function') {
+            console.warn(`[APP] View não existe: ${viewName}`);
+            return;
+        }
         
         state.currentView = viewName;
         
-        // Remove active de todos
+        // Atualiza botões nav
         document.querySelectorAll('.nav-btn').forEach(btn => {
             btn.classList.remove('active');
         });
-        
-        // Marca novo como active
         if (btnEl) btnEl.classList.add('active');
         
         // Chama a view
-        if (typeof K11Views[viewName] === 'function') {
+        try {
             K11Views[viewName]();
+        } catch (err) {
+            console.error(`[APP] Erro ao renderizar view ${viewName}:`, err);
         }
     }
     
-    // ── MODE ──────────────────────────────────────────────────
+    // ── MODE TOGGLE ───────────────────────────────────────────
     function toggleMode() {
         const newMode = state.mode === 'ultra' ? 'lite' : 'ultra';
         state.mode = newMode;
-        sessionStorage.setItem('k11_mode', newMode);
+        try { sessionStorage.setItem('k11_mode', newMode); } catch {}
         
         document.body.classList.toggle('mode-lite', newMode === 'lite');
         
@@ -71,38 +101,70 @@ const APP = (function() {
             badge.textContent = newMode.toUpperCase();
         }
         
+        // Recarrega a página para aplicar modo completamente
         location.reload();
     }
     
     // ── MAIN INIT ─────────────────────────────────────────────
     function init() {
-        if (state._initialized) return;
-        state._initialized = true;
-        
-        console.log('[K11 APP] Inicializando...');
-        
-        // Setup
-        _setupAuth();
-        _setupDataEvents();
-        
-        // Badge de modo
-        const badge = document.getElementById('mode-badge-header');
-        if (badge) {
-            badge.className = `mode-badge ${state.mode}`;
-            badge.textContent = state.mode.toUpperCase();
-            badge.style.display = 'inline-block';
+        // Guard: evita double-init
+        if (state._initialized) {
+            console.log('[APP] Já foi inicializado, ignorando chamada duplicada');
+            return;
         }
         
-        // Chama a view padrão
-        const defaultBtn = document.querySelector('[data-view="' + state.currentView + '"]');
-        view(state.currentView, defaultBtn);
+        state._initialized = true;
+        console.log('[APP] 🚀 Inicializando...');
         
-        // Emit evento de ready
-        window.dispatchEvent(new CustomEvent('k11:ready', {
-            detail: { state }
-        }));
-        
-        console.log('[K11 APP] ✅ Inicialização concluída');
+        try {
+            // 1. Setup modo
+            _initMode();
+            
+            // 2. Restaurar autenticação
+            _setupAuth();
+            
+            // 3. Setup de eventos de dados
+            _setupDataEvents();
+            
+            // 4. Atualizar badge de modo
+            const badge = document.getElementById('mode-badge-header');
+            if (badge) {
+                badge.className = `mode-badge ${state.mode}`;
+                badge.textContent = state.mode.toUpperCase();
+                badge.style.display = 'inline-block';
+            }
+            
+            // 5. Atualizar status do engine
+            const engineStatus = document.getElementById('engine-status');
+            if (engineStatus) {
+                engineStatus.textContent = 'READY ✓';
+                engineStatus.style.color = 'var(--primary)';
+            }
+            
+            // 6. Renderizar view padrão
+            const defaultBtn = document.querySelector(`[data-view="${state.currentView}"]`);
+            view(state.currentView, defaultBtn);
+            
+            // 7. Emit evento global de ready
+            window.dispatchEvent(new CustomEvent('k11:ready', {
+                detail: { 
+                    state,
+                    timestamp: Date.now(),
+                    userAgent: navigator.userAgent,
+                }
+            }));
+            
+            console.log('[APP] ✅ Inicialização CONCLUÍDA', {
+                mode: state.mode,
+                view: state.currentView,
+                authenticated: !!state.authToken,
+            });
+            
+        } catch (err) {
+            console.error('[APP] ❌ Erro fatal na inicialização:', err);
+            state._initialized = false;
+            throw err;
+        }
     }
     
     // ── PUBLIC API ────────────────────────────────────────────
@@ -112,143 +174,99 @@ const APP = (function() {
         toggleMode,
         getState: () => ({ ...state }),
         getAuth: () => state.authToken,
+        getUser: () => state.user,
+        setAuth: (token, user) => {
+            state.authToken = token;
+            state.user = user || {};
+        },
         _initialized: state._initialized,
     };
 })();
 
 // ════════════════════════════════════════════════════════════════
-// 🔥 NUCLEAR BOOT: Garantir que APP.init() seja chamado
+// GARANTIR QUE APP.init() SEJA CHAMADO
 // ════════════════════════════════════════════════════════════════
 
-(function _nuclearInit() {
-    console.log('[K11 NUCLEAR] Iniciando garantia de APP.init()...');
+(function _ensureAppInit() {
+    console.log('[APP BOOT] Garantindo inicialização de APP...');
     
-    let tentativas = 0;
-    let maxTentativas = 50; // 5 segundos com polling a cada 100ms
+    // Tenta várias estratégias para garantir que init() seja chamado
     
-    const intervalo = setInterval(() => {
-        tentativas++;
-        
-        // Verificar se tudo que é necessário existe
-        const engineStatus = document.getElementById('engine-status');
-        const appExiste = typeof APP !== 'undefined';
-        const initExiste = appExiste && typeof APP.init === 'function';
-        const jaSeLlamo = appExiste && APP._initialized;
-        
-        // Log detalhado a cada 10 tentativas
-        if (tentativas % 10 === 0) {
-            console.log(`[K11 NUCLEAR] Tentativa ${tentativas}/50`, {
-                'engine-status exists': !!engineStatus,
-                'APP exists': appExiste,
-                'APP.init exists': initExiste,
-                'Already initialized': jaSeLlamo,
-                readyState: document.readyState,
-            });
-        }
-        
-        // Se algo não existe ainda, continua tentando
-        if (!engineStatus || !appExiste || !initExiste) {
-            if (tentativas >= maxTentativas) {
-                console.error('[K11 NUCLEAR] ❌ FALHA: Pré-requisitos não foram atendidos após 5s', {
-                    'engine-status': !!engineStatus,
-                    'APP': appExiste,
-                    'APP.init': initExiste,
-                });
-                clearInterval(intervalo);
-            }
-            return;
-        }
-        
-        // Se já foi inicializado, para de tentar
-        if (jaSeLlamo) {
-            console.log('[K11 NUCLEAR] ✅ APP já foi inicializado');
-            clearInterval(intervalo);
-            return;
-        }
-        
-        // ✅ TUDO PRONTO! Chama APP.init()
-        clearInterval(intervalo);
-        
-        console.log(`[K11 NUCLEAR] 🔥 EXECUTANDO APP.init() na tentativa ${tentativas}`);
-        
-        try {
-            APP._initialized = true;
-            APP.init();
-            console.log('[K11 NUCLEAR] ✅ APP.init() executado com sucesso!');
-        } catch (erro) {
-            console.error('[K11 NUCLEAR] ❌ Erro ao executar APP.init():', erro);
-        }
-        
-    }, 100); // Verifica a cada 100ms
+    // Estratégia 1: Se DOM estiver pronto, chama imediatamente
+    if (document.readyState !== 'loading') {
+        console.log('[APP BOOT] document.readyState =', document.readyState, '→ chamando APP.init() AGORA');
+        setTimeout(() => APP.init(), 0);
+        return;
+    }
     
-    // Timeout de segurança
+    // Estratégia 2: Escuta DOMContentLoaded
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log('[APP BOOT] DOMContentLoaded → chamando APP.init()');
+        APP.init();
+    });
+    
+    // Estratégia 3: Fallback com timeout (máximo 10 segundos)
     setTimeout(() => {
-        clearInterval(intervalo);
-        if (typeof APP === 'undefined' || !APP._initialized) {
-            console.error('[K11 NUCLEAR] ⏱️ TIMEOUT de 5s - APP.init() não foi executado!');
+        if (!APP._initialized) {
+            console.warn('[APP BOOT] Timeout de 10s atingido, forçando APP.init()');
+            APP.init();
         }
-    }, 5000);
+    }, 10_000);
+    
 })();
 
 // ════════════════════════════════════════════════════════════════
-// 🔥 NUCLEAR BOOT: Garantir que K11Live.start() seja chamado
+// GARANTIR QUE K11Live.start() SEJA CHAMADO
 // ════════════════════════════════════════════════════════════════
 
-(function _k11LiveInit() {
-    console.log('[K11 NUCLEAR] Iniciando garantia de K11Live.start()...');
+(function _ensureK11LiveStart() {
+    console.log('[K11LIVE BOOT] Garantindo inicialização de K11Live...');
     
+    // Estratégia 1: Escuta o evento k11:ready (emitido por APP.init())
+    window.addEventListener('k11:ready', () => {
+        console.log('[K11LIVE BOOT] k11:ready recebido → iniciando K11Live');
+        if (typeof K11Live !== 'undefined' && typeof K11Live.start === 'function') {
+            try {
+                K11Live.start();
+                // Pede permissão de notificação após 2 segundos
+                setTimeout(() => {
+                    if (typeof K11Live.requestNotificationPermission === 'function') {
+                        K11Live.requestNotificationPermission();
+                    }
+                }, 2000);
+            } catch (err) {
+                console.error('[K11LIVE BOOT] Erro ao iniciar K11Live:', err);
+            }
+        }
+    });
+    
+    // Estratégia 2: Fallback com polling (máximo 5 segundos)
     let tentativas = 0;
-    let maxTentativas = 20; // 2 segundos com polling a cada 100ms
-    
-    const intervalo = setInterval(() => {
+    const interval = setInterval(() => {
         tentativas++;
+        if (tentativas > 50) { // 5 segundos = 50 × 100ms
+            clearInterval(interval);
+            return;
+        }
         
         const liveExiste = typeof K11Live !== 'undefined';
         const startExiste = liveExiste && typeof K11Live.start === 'function';
         const jaSeLlamo = liveExiste && K11Live._started;
         
-        if (!liveExiste || !startExiste) {
-            if (tentativas >= maxTentativas) {
-                console.warn('[K11 NUCLEAR] K11Live não carregou em 2s (pode estar ok)');
-                clearInterval(intervalo);
+        if (liveExiste && startExiste && !jaSeLlamo && APP._initialized) {
+            console.log('[K11LIVE BOOT] Polling detectou APP inicializado → iniciando K11Live');
+            clearInterval(interval);
+            try {
+                K11Live.start();
+            } catch (err) {
+                console.error('[K11LIVE BOOT] Erro ao iniciar K11Live via polling:', err);
             }
-            return;
         }
-        
-        if (jaSeLlamo) {
-            console.log('[K11 NUCLEAR] ✅ K11Live já foi iniciado');
-            clearInterval(intervalo);
-            return;
-        }
-        
-        clearInterval(intervalo);
-        
-        console.log(`[K11 NUCLEAR] 🔥 EXECUTANDO K11Live.start()`);
-        
-        try {
-            K11Live._started = true;
-            K11Live.start();
-            console.log('[K11 NUCLEAR] ✅ K11Live.start() executado com sucesso!');
-            
-            // Pede permissão de notificação após 3s
-            setTimeout(() => {
-                if (typeof K11Live.requestNotificationPermission === 'function') {
-                    K11Live.requestNotificationPermission();
-                }
-            }, 3000);
-            
-        } catch (erro) {
-            console.error('[K11 NUCLEAR] ❌ Erro ao executar K11Live.start():', erro);
-        }
-        
     }, 100);
     
-    setTimeout(() => {
-        clearInterval(intervalo);
-    }, 2000);
 })();
 
-console.log('[K11 NUCLEAR] ✅ Sistema de inicialização nuclear ativo');
-
-// Exportar para uso global
+// Exporta globalmente
 window.APP = APP;
+
+console.log('[APP BOOT] ✅ Sistema de boot ativo e pronto');
