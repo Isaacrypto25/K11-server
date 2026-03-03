@@ -471,27 +471,9 @@ const APP = {
 
 window.APP = APP;
 
-// ── AUTO-INIT: Compatível com carregamento em qualquer momento ────
-function _initK11() {
-    const el = document.getElementById('engine-status');
-    if (!el) return;
-    if (typeof APP !== 'undefined' && typeof APP.init === 'function') {
-        console.log('[K11] Iniciando APP (readyState=' + document.readyState + ')...');
-        APP.init();
-    }
-}
-
-// Verifica estado do documento e agenda inicialização
-if (document.readyState === 'loading') {
-    // DOM ainda está carregando
-    document.addEventListener('DOMContentLoaded', () => setTimeout(_initK11, 50));
-} else {
-    // DOM já foi parseado
-    setTimeout(_initK11, 0);
-}
-
-// Fallback: Também tenta no load
-window.addEventListener('load', () => setTimeout(_initK11, 100));
+window.addEventListener('load', () => {
+    if (document.getElementById('engine-status')) APP.init();
+});
 
 // ── SERVICE WORKER: Auto-reload + botão de atualizar ─────────
 if ('serviceWorker' in navigator) {
@@ -551,3 +533,203 @@ function _mostrarBotaoAtualizar(reg) {
         setTimeout(() => window.location.reload(), 300);
     });
 }
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// 🔥 NUCLEAR BOOT: Force initialization sem depender de eventos
+// ════════════════════════════════════════════════════════════════════════════
+// Este código garante que APP.init() e K11Live.start() são chamados
+// independentemente de quando os eventos de carregamento dispararem.
+//
+// PROBLEMA ORIGINAL:
+// - window.addEventListener('load', ...) registrado DEPOIS que 'load' já disparou
+// - Resultado: callback NUNCA é executado
+// - Dashboard fica em "BOOTING" infinito
+//
+// SOLUÇÃO:
+// - Usar polling em vez de eventos
+// - Verificar estado real (document.readyState, typeof APP, etc)
+// - Múltiplos gatilhos para segurança
+// ════════════════════════════════════════════════════════════════════════════
+
+(function _nuclearBootstrap() {
+    'use strict';
+    
+    let appInitialized = false;
+    let k11LiveStarted = false;
+    let attemptCount = 0;
+    let maxAttempts = 50; // 5 segundos com polling a cada 100ms
+    
+    const pollInterval = setInterval(_checkAndInit, 100);
+    const timeoutHandle = setTimeout(_timeout, 5000);
+    
+    function _checkAndInit() {
+        attemptCount++;
+        
+        // ── CHECK 1: Todos os elementos DOM necessários existem? ──
+        const engineStatus = document.getElementById('engine-status');
+        if (!engineStatus) {
+            if (attemptCount >= maxAttempts) {
+                console.error('[K11 NUCLEAR] ❌ engine-status elemento nunca foi encontrado!');
+                clearInterval(pollInterval);
+            }
+            return;
+        }
+        
+        // ── CHECK 2: APP objeto existe e tem init? ──
+        if (typeof APP === 'undefined') {
+            if (attemptCount >= maxAttempts) {
+                console.error('[K11 NUCLEAR] ❌ APP objeto nunca foi definido!');
+                clearInterval(pollInterval);
+            }
+            return;
+        }
+        
+        if (typeof APP.init !== 'function') {
+            if (attemptCount >= maxAttempts) {
+                console.error('[K11 NUCLEAR] ❌ APP.init não é uma função!');
+                clearInterval(pollInterval);
+            }
+            return;
+        }
+        
+        // ── CHECK 3: Já foi inicializado? ──
+        if (appInitialized) {
+            clearInterval(pollInterval);
+            clearTimeout(timeoutHandle);
+            return;
+        }
+        
+        // ════════════════════════════════════════════════════════════
+        // ✅ TUDO PRONTO! Iniciando APP
+        // ════════════════════════════════════════════════════════════
+        
+        clearInterval(pollInterval);
+        clearTimeout(timeoutHandle);
+        appInitialized = true;
+        
+        console.log('[K11 NUCLEAR] 🔥 BOOT iniciado! (tentativa ' + attemptCount + '/50)');
+        console.log('[K11 NUCLEAR] readyState: ' + document.readyState);
+        console.log('[K11 NUCLEAR] Chamando APP.init()...');
+        
+        try {
+            APP.init();
+            console.log('[K11 NUCLEAR] ✅ APP.init() executado com sucesso');
+        } catch (err) {
+            console.error('[K11 NUCLEAR] ❌ Erro ao chamar APP.init():', err);
+        }
+        
+        // ── K11Live também precisa iniciar ──
+        _bootstrapK11Live();
+    }
+    
+    function _timeout() {
+        clearInterval(pollInterval);
+        if (!appInitialized) {
+            console.error('[K11 NUCLEAR] ⏱️ TIMEOUT! APP não inicializou em 5 segundos');
+            console.error('[K11 NUCLEAR] Diagnóstico:', {
+                'readyState': document.readyState,
+                'APP type': typeof APP,
+                'APP.init exists': typeof APP?.init === 'function',
+                'engine-status exists': !!document.getElementById('engine-status'),
+                'attempts': attemptCount,
+            });
+        }
+    }
+    
+    function _bootstrapK11Live() {
+        console.log('[K11 NUCLEAR] Iniciando K11Live...');
+        
+        let liveAttempts = 0;
+        const liveCheck = setInterval(() => {
+            liveAttempts++;
+            
+            // K11Live existe?
+            if (typeof K11Live === 'undefined') {
+                if (liveAttempts >= 20) {
+                    console.warn('[K11 NUCLEAR] ⚠️ K11Live nunca foi definido (timeout 2s)');
+                    clearInterval(liveCheck);
+                }
+                return;
+            }
+            
+            // K11Live.start existe?
+            if (typeof K11Live.start !== 'function') {
+                if (liveAttempts >= 20) {
+                    console.warn('[K11 NUCLEAR] ⚠️ K11Live.start não é uma função');
+                    clearInterval(liveCheck);
+                }
+                return;
+            }
+            
+            // Já foi iniciado?
+            if (k11LiveStarted) {
+                clearInterval(liveCheck);
+                return;
+            }
+            
+            // ✅ Iniciar K11Live
+            k11LiveStarted = true;
+            clearInterval(liveCheck);
+            
+            console.log('[K11 NUCLEAR] 🔥 K11Live iniciado! (tentativa ' + liveAttempts + '/20)');
+            
+            try {
+                K11Live.start();
+                console.log('[K11 NUCLEAR] ✅ K11Live.start() executado com sucesso');
+                
+                // Requisita permissão de notificação
+                setTimeout(() => {
+                    if (typeof K11Live.requestNotificationPermission === 'function') {
+                        K11Live.requestNotificationPermission();
+                    }
+                }, 3000);
+                
+            } catch (err) {
+                console.error('[K11 NUCLEAR] ❌ Erro ao chamar K11Live.start():', err);
+            }
+            
+        }, 100); // Verifica a cada 100ms
+        
+        // Timeout para K11Live
+        setTimeout(() => {
+            clearInterval(liveCheck);
+            if (!k11LiveStarted) {
+                console.warn('[K11 NUCLEAR] ⚠️ K11Live não iniciou em 2 segundos (pode estar ok)');
+            }
+        }, 2000);
+    }
+})();
+
+// ════════════════════════════════════════════════════════════════════════════
+// 🛡️ FALLBACK: Se alguma coisa falhar, tenta novamente após login
+// ════════════════════════════════════════════════════════════════════════════
+(function _setupFallbackInit() {
+    // Se em 10 segundos o app ainda não foi inicializado, tenta força
+    setTimeout(() => {
+        if (!APP || !APP._initialized) {
+            console.warn('[K11 NUCLEAR] 🔄 Fallback: Tentando inicialização forçada...');
+            if (typeof APP === 'object' && typeof APP.init === 'function') {
+                try {
+                    APP.init();
+                    console.log('[K11 NUCLEAR] ✅ Fallback init bem-sucedido');
+                } catch (err) {
+                    console.error('[K11 NUCLEAR] ❌ Fallback init falhou:', err);
+                }
+            }
+        }
+        
+        // K11Live fallback
+        if (!K11Live || !K11Live._started) {
+            if (typeof K11Live === 'object' && typeof K11Live.start === 'function') {
+                try {
+                    K11Live.start();
+                    console.log('[K11 NUCLEAR] ✅ K11Live fallback bem-sucedido');
+                } catch (err) {
+                    console.error('[K11 NUCLEAR] ❌ K11Live fallback falhou:', err);
+                }
+            }
+        }
+    }, 10000);
+})();
+
