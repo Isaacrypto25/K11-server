@@ -84,6 +84,8 @@ app.post('/api/auth/login', auth.loginHandler);
 app.post('/api/auth/refresh', auth.requireAuth, auth.refreshHandler);
 app.post('/api/auth/logout', auth.requireAuth, auth.logoutHandler);
 
+app.use(express.static('public'));
+
 // ── DATA ROUTES ───────────────────────────────────────────────
 app.get('/api/data/all', auth.requireAuth, async (req, res) => {
     try {
