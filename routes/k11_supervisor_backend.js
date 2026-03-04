@@ -285,33 +285,37 @@ Resonda APENAS em JSON estruturado.`;
         state.datastore.get('fornecedor'),
       ]);
 
-      // Busca inteligente: extrai palavras-chave da pergunta e filtra produtos relevantes
-      const stopWords = new Set(['do','da','de','o','a','os','as','um','uma','me','qual','é','o','código','produto','tem','no','na','em','para','por','com']);
+      // Busca inteligente: extrai palavras-chave da pergunta
+      const stopWords = new Set(['do','da','de','o','a','os','as','um','uma','me','qual','e','codigo','produto','tem','no','na','em','para','por','com','voce','vc']);
       const palavras = userMessage.toLowerCase()
-        .replace(/[^a-z0-9\s]/g, ' ')
-        .split(/\s+/)
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+        .replace(/[^a-z0-9 ]/g, ' ')
+        .split(' ')
         .filter(w => w.length > 2 && !stopWords.has(w));
 
-      let produtosFiltrados = produtos;
+      // Filtra apenas produtos relevantes à pergunta
+      let listaProdutos = [];
       if (palavras.length > 0) {
-        produtosFiltrados = produtos.filter(p => {
-          const haystack = `${p['Produto']} ${p['Descrição produto']} ${p['Texto breve material'] || ''}`.toLowerCase();
-          return palavras.some(w => haystack.includes(w));
-        });
+        listaProdutos = produtos.filter(p => {
+          const hay = `${p['Produto']} ${p['Descrição produto']}`.toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          return palavras.some(w => hay.includes(w));
+        }).slice(0, 10); // máximo 10 resultados
       }
 
-      // Se busca retornou resultados usa eles, senão usa top 20 por quantidade
-      const listaProdutos = produtosFiltrados.length > 0
-        ? produtosFiltrados.slice(0, 30)
-        : produtos.sort((a, b) => (parseFloat(b['Quantidade']) || 0) - (parseFloat(a['Quantidade']) || 0)).slice(0, 20);
+      // Fallback: top 5 por estoque baixo (mais urgentes)
+      if (listaProdutos.length === 0) {
+        listaProdutos = produtos
+          .sort((a, b) => (parseFloat(a['Quantidade']) || 0) - (parseFloat(b['Quantidade']) || 0))
+          .slice(0, 5);
+      }
 
+      // Formato compacto: ~40 chars por linha
       const topProdutos = listaProdutos
-        .map(p => `[${p['Produto']}] ${p['Descrição produto']} — Qtd: ${p['Quantidade']} | Valor: R$${p['Valor total']}`)
+        .map(p => `[${p['Produto']}] ${(p['Descrição produto'] || '').slice(0, 35)} Qtd:${p['Quantidade']}`)
         .join('\n');
 
-      const buscaInfo = produtosFiltrados.length > 0
-        ? `(${produtosFiltrados.length} produto(s) encontrado(s) para: "${palavras.join(', ')}")`
-        : '(top 20 por estoque)';
+      const buscaInfo = `(${listaProdutos.length} produto(s))`;
 
       // Produtos com estoque zerado ou crítico (< 5)
       const rupturas = produtos
@@ -335,37 +339,17 @@ Resonda APENAS em JSON estruturado.`;
         .map(([loja, qtd]) => `Loja ${loja}: ${qtd} un.`)
         .join(' | ') || 'Sem vendas registradas hoje';
 
-      // Fornecedores
-      const fornStr = fornecedores
-        .slice(0, 5)
-        .map(f => `${f['FIELD12']} — NF: ${f['AGENDAMENTOS POR FORNECEDOR']}`)
-        .join('\n') || 'Nenhum';
+      // Monta contexto compacto (economiza tokens)
+      const context = `IA do K11. Responda direto com os dados abaixo. Sem introduções.
 
-      // Monta contexto completo com dados reais
-      const context = `Você é o Supervisor IA do K11 OMNI ELITE - Sistema de Gestão Operacional.
-Você TEM ACESSO DIRETO aos dados abaixo. Responda com dados concretos, sem sugerir "consultar o sistema".
+VENDAS HOJE: ${vendasStr}
+ALERTAS: ${state.operationalAlerts.filter(a => a.type === 'CRITICAL').length} críticos
+RUPTURAS: ${rupturas.split('\n').slice(0,3).join(' | ')}
 
-=== VENDAS HOJE (${hoje}) ===
-${vendasStr}
-
-=== ESTOQUE — PRODUTOS RELEVANTES ${buscaInfo} ===
+PRODUTOS ${buscaInfo}:
 ${topProdutos}
 
-=== RUPTURAS / ESTOQUE CRÍTICO ===
-${rupturas}
-
-=== FORNECEDORES AGENDADOS ===
-${fornStr}
-
-=== ALERTAS ATIVOS ===
-Críticos: ${state.operationalAlerts.filter(a => a.type === 'CRITICAL').length}
-Warnings: ${state.operationalAlerts.filter(a => a.type === 'WARNING').length}
-
-Hora: ${new Date().toLocaleString('pt-BR')}
-Total produtos em estoque: ${produtos.length}
-Total registros PDV: ${pdvRows.length}
-
-Responda de forma DIRETA e OBJETIVA usando os dados acima. Se o produto for perguntado, busque pelo código ou descrição na lista acima.`;
+Hora: ${new Date().toLocaleTimeString('pt-BR')} | Total estoque: ${produtos.length} itens`;
 
       // Adiciona histórico
       const messages = [
