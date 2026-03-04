@@ -599,7 +599,7 @@ const K11AuthUI = (() => {
                 <label class="auth-label">Nome completo</label>
                 <div class="auth-input-wrap">
                     <input id="f-nome" class="auth-input" type="text" spellcheck="false" autocorrect="off" autocapitalize="off"
-                           placeholder="Ryan Santos" autocomplete="off">
+                           placeholder="Nome e sobrenome" autocomplete="off">
                     <span class="auth-input-icon" id="icon-nome"></span>
                 </div>
                 <div class="auth-field-error" id="err-nome"></div>
