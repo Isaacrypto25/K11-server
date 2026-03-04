@@ -113,36 +113,39 @@ const pdvDomination = (() => {
 
   async function getMyPDVMetrics() {
     try {
+      const hoje = new Date().toISOString().slice(0, 10);
+      const semanaAtras = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+      const mesAtras = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+
       const { data, error } = await state.supabase
         .from('pdv')
-        .select(`
-          id, 
-          nome, 
-          vendas_hoje, 
-          vendas_semana, 
-          vendas_mes,
-          ticket_medio,
-          margem_operacional,
-          produtos_vendidos,
-          clientes_hoje,
-          frequencia_cliente
-        `)
-        .eq('id', state.myPdvId)
-        .single();
+        .select('loja, data_lancamento, nr_produto, quantidade_vendida')
+        .eq('loja', state.myPdvId)
+        .gte('data_lancamento', mesAtras);
 
       if (error) throw error;
 
+      let salesToday = 0, salesWeek = 0, salesMonth = 0;
+      const produtos = {};
+      for (const row of data) {
+        const qtd = parseFloat(row.quantidade_vendida) || 0;
+        salesMonth += qtd;
+        if (row.data_lancamento >= semanaAtras) salesWeek += qtd;
+        if (row.data_lancamento === hoje) salesToday += qtd;
+        if (row.nr_produto) produtos[row.nr_produto] = (produtos[row.nr_produto] || 0) + qtd;
+      }
+
       return {
-        pdvId: data.id,
-        pdvName: data.nome,
-        salesToday: data.vendas_hoje,
-        salesWeek: data.vendas_semana,
-        salesMonth: data.vendas_mes,
-        avgTicket: data.ticket_medio,
-        margin: data.margem_operacional,
-        productsMoved: data.produtos_vendidos,
-        customersToday: data.clientes_hoje,
-        customerFrequency: data.frequencia_cliente,
+        pdvId: state.myPdvId,
+        pdvName: state.myPdvName,
+        salesToday,
+        salesWeek,
+        salesMonth,
+        avgTicket: salesMonth > 0 ? salesMonth / Math.max(Object.keys(produtos).length, 1) : 0,
+        margin: 0,
+        productsMoved: Object.keys(produtos).length,
+        customersToday: 0,
+        customerFrequency: 0,
         // Calcula métricas derivadas
         dailyAverage: data.vendas_semana / 7,
         growthWeek: ((data.vendas_hoje - (data.vendas_semana / 7)) / (data.vendas_semana / 7) * 100).toFixed(1),
@@ -167,27 +170,34 @@ const pdvDomination = (() => {
           id, 
           nome, 
           vendas_hoje, 
-          vendas_semana,
-          ticket_medio,
-          margem_operacional,
-          clientes_hoje
+          quantidade_vendida
         `)
-        .neq('id', state.myPdvId)
-        .order('vendas_hoje', { ascending: false });
+        .neq('loja', state.myPdvId)
+        .gte('data_lancamento', new Date(Date.now() - 86400000).toISOString().slice(0, 10));
 
       if (error) throw error;
 
-      return data.map((pdv, idx) => ({
-        pdvId: pdv.id,
-        pdvName: pdv.nome,
-        rank: idx + 1,
-        salesToday: pdv.vendas_hoje,
-        salesWeek: pdv.vendas_semana,
-        avgTicket: pdv.ticket_medio,
-        margin: pdv.margem_operacional,
-        customersToday: pdv.clientes_hoje,
-        strength: idx === 0 ? 'STRONG' : idx <= 1 ? 'MEDIUM' : 'WEAK'
-      }));
+      // Agrupa por loja
+      const lojaMap = {};
+      for (const row of data) {
+        const loja = row.loja;
+        if (!lojaMap[loja]) lojaMap[loja] = 0;
+        lojaMap[loja] += parseFloat(row.quantidade_vendida) || 0;
+      }
+
+      return Object.entries(lojaMap)
+        .sort((a, b) => b[1] - a[1])
+        .map(([loja, vendas], idx) => ({
+          pdvId: loja,
+          pdvName: loja,
+          rank: idx + 1,
+          salesToday: vendas,
+          salesWeek: vendas * 7,
+          avgTicket: 0,
+          margin: 0,
+          customersToday: 0,
+          strength: idx === 0 ? 'STRONG' : idx <= 1 ? 'MEDIUM' : 'WEAK'
+        }));
 
     } catch (err) {
       state.logger?.error('PDV-DOMINATION', 'Erro ao carregar métricas concorrentes', { error: err.message });

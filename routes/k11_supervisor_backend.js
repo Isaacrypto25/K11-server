@@ -79,27 +79,49 @@ const supervisor = (() => {
     try {
       const { data: pdvData, error: pdvError } = await state.supabase
         .from('pdv')
-        .select('id, nome, vendas_hoje, vendas_semana, vendas_mes, produtos_vendidos, clientes_hoje')
-        .order('vendas_hoje', { ascending: false });
+        .select('loja, data_lancamento, nr_produto, texto_breve_material, quantidade_vendida, quantidade_disponibilizada')
+        .order('data_lancamento', { ascending: false })
+        .limit(500);
 
       if (pdvError) throw pdvError;
 
-      const pdvMetrics = [];
-      for (let i = 0; i < pdvData.length; i++) {
-        const pdv = pdvData[i];
-        const trend = ((pdv.vendas_hoje - pdv.vendas_semana / 7) / (pdv.vendas_semana / 7) * 100).toFixed(1);
-        
-        pdvMetrics.push({
-          rank: i + 1,
-          name: pdv.nome,
-          salesToday: pdv.vendas_hoje,
-          salesTrend: trend,
-          productsMoving: pdv.produtos_vendidos,
-          customersToday: pdv.clientes_hoje,
-          performance: trend > 10 ? 'CRESCENDO' : trend < -5 ? 'CAINDO' : 'ESTÁVEL',
-          topProducts: await getTopProductsForPDV(pdv.id)
-        });
+      // Agrupa registros por loja
+      const lojaMap = {};
+      const hoje = new Date().toISOString().slice(0, 10);
+      const ontem = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+
+      for (const row of pdvData) {
+        const loja = row.loja;
+        if (!lojaMap[loja]) lojaMap[loja] = { hoje: 0, ontem: 0, produtos: {} };
+        const qtd = parseFloat(row.quantidade_vendida) || 0;
+        if (row.data_lancamento === hoje)  lojaMap[loja].hoje  += qtd;
+        if (row.data_lancamento === ontem) lojaMap[loja].ontem += qtd;
+        if (row.nr_produto) {
+          lojaMap[loja].produtos[row.nr_produto] = (lojaMap[loja].produtos[row.nr_produto] || 0) + qtd;
+        }
       }
+
+      const pdvMetrics = Object.entries(lojaMap)
+        .sort((a, b) => b[1].hoje - a[1].hoje)
+        .map(([loja, dados], i) => {
+          const trend = dados.ontem > 0
+            ? ((dados.hoje - dados.ontem) / dados.ontem * 100).toFixed(1)
+            : '0.0';
+          const topProducts = Object.entries(dados.produtos)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3)
+            .map(([productId, quantity]) => ({ productId, quantity }));
+          return {
+            rank: i + 1,
+            name: loja,
+            salesToday: dados.hoje,
+            salesTrend: trend,
+            productsMoving: Object.keys(dados.produtos).length,
+            customersToday: 0,
+            performance: parseFloat(trend) > 10 ? 'CRESCENDO' : parseFloat(trend) < -5 ? 'CAINDO' : 'ESTÁVEL',
+            topProducts
+          };
+        });
 
       state.pdvPerformance = new Map(pdvMetrics.map(m => [m.name, m]));
       
@@ -152,34 +174,34 @@ const supervisor = (() => {
       // Produtos em risco de ruptura
       const { data: produtos, error: prodError } = await state.supabase
         .from('produtos')
-        .select('id, nome, qtd_disponivel, consumo_diario, fornecedor_id, preco')
-        .lt('qtd_disponivel', 100);
+        .select('id, produto, descricao_produto, quantidade, qtd_disponivel_uma, valor_total, pessoa_autorizada')
+        .lt('quantidade', 100);
 
       if (prodError) throw prodError;
 
       for (const prod of produtos) {
-        const daysUntilStockout = prod.consumo_diario > 0 
-          ? prod.qtd_disponivel / prod.consumo_diario 
+        const daysUntilStockout = 1 > 0 
+          ? parseFloat(prod.quantidade) || 0 / 1 
           : 999;
 
         if (daysUntilStockout < 3) {
           alerts.push({
             type: 'CRITICAL',
-            title: `${prod.nome}: Ruptura em ${daysUntilStockout.toFixed(1)}h`,
+            title: `${prod.descricao_produto || prod.produto}: Ruptura em ${daysUntilStockout.toFixed(1)}h`,
             action: 'REPOR_URGENTE',
-            product: prod.nome,
-            currentStock: prod.qtd_disponivel,
+            product: prod.descricao_produto || prod.produto,
+            currentStock: parseFloat(prod.quantidade) || 0,
             daysUntilStockout,
-            estimatedLoss: prod.preco * daysUntilStockout * prod.consumo_diario,
+            estimatedLoss: parseFloat(prod.valor_total) || 0 * daysUntilStockout * 1,
             priority: 1,
             timestamp: new Date()
           });
         } else if (daysUntilStockout < 7) {
           alerts.push({
             type: 'WARNING',
-            title: `${prod.nome}: Atenção - ${daysUntilStockout.toFixed(1)} dias`,
+            title: `${prod.descricao_produto || prod.produto}: Atenção - ${daysUntilStockout.toFixed(1)} dias`,
             action: 'MONITORAR',
-            product: prod.nome,
+            product: prod.descricao_produto || prod.produto,
             priority: 2,
             timestamp: new Date()
           });
