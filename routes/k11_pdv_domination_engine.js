@@ -352,9 +352,9 @@ const pdvDomination = (() => {
         salesTarget: comparison.myData.salesToday * 0.85
       },
       bonusIfAchieve: {
-        +25percent: 'R$ 500',
-        +30percent: 'R$ 1000',
-        +50percent: 'R$ 2000'
+        '+25percent': 'R$ 500',
+        '+30percent': 'R$ 1000',
+        '+50percent': 'R$ 2000'
       }
     };
   }
