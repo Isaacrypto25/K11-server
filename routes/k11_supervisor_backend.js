@@ -77,13 +77,8 @@ const supervisor = (() => {
 
   async function analyzeCommercial() {
     try {
-      const { data: pdvData, error: pdvError } = await state.supabase
-        .from('pdv')
-        .select('loja, data_lancamento, nr_produto, texto_breve_material, quantidade_vendida, quantidade_disponibilizada')
-        .order('data_lancamento', { ascending: false })
-        .limit(500);
-
-      if (pdvError) throw pdvError;
+      // Lê do cache do datastore (sem nova query ao Supabase)
+      const pdvData = await state.datastore.get('pdv');
 
       // Agrupa registros por loja
       const lojaMap = {};
@@ -91,13 +86,16 @@ const supervisor = (() => {
       const ontem = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
       for (const row of pdvData) {
-        const loja = row.loja;
+        const loja = row['Loja'];
+        if (!loja) continue;
         if (!lojaMap[loja]) lojaMap[loja] = { hoje: 0, ontem: 0, produtos: {} };
-        const qtd = parseFloat(row.quantidade_vendida) || 0;
-        if (row.data_lancamento === hoje)  lojaMap[loja].hoje  += qtd;
-        if (row.data_lancamento === ontem) lojaMap[loja].ontem += qtd;
-        if (row.nr_produto) {
-          lojaMap[loja].produtos[row.nr_produto] = (lojaMap[loja].produtos[row.nr_produto] || 0) + qtd;
+        const qtd = parseFloat(row['Quantidade vendida']) || 0;
+        const data = row['Data de lançamento do cupom fiscal'];
+        if (data === hoje)  lojaMap[loja].hoje  += qtd;
+        if (data === ontem) lojaMap[loja].ontem += qtd;
+        const prod = row['Nº do produto'];
+        if (prod) {
+          lojaMap[loja].produtos[prod] = (lojaMap[loja].produtos[prod] || 0) + qtd;
         }
       }
 
@@ -172,36 +170,32 @@ const supervisor = (() => {
 
     try {
       // Produtos em risco de ruptura
-      const { data: produtos, error: prodError } = await state.supabase
-        .from('produtos')
-        .select('id, produto, descricao_produto, quantidade, qtd_disponivel_uma, valor_total, pessoa_autorizada')
-        .lt('quantidade', 100);
-
-      if (prodError) throw prodError;
+      const todosProdutos = await state.datastore.get('produtos');
+      const produtos = todosProdutos.filter(p => (parseFloat(p['Quantidade']) || 0) < 100);
 
       for (const prod of produtos) {
         const daysUntilStockout = 1 > 0 
-          ? parseFloat(prod.quantidade) || 0 / 1 
+          ? parseFloat(prod['Quantidade']) || 0 / 1 
           : 999;
 
         if (daysUntilStockout < 3) {
           alerts.push({
             type: 'CRITICAL',
-            title: `${prod.descricao_produto || prod.produto}: Ruptura em ${daysUntilStockout.toFixed(1)}h`,
+            title: `${prod['Descrição produto'] || prod['Produto'] || 'Produto'}: Ruptura em ${daysUntilStockout.toFixed(1)}h`,
             action: 'REPOR_URGENTE',
-            product: prod.descricao_produto || prod.produto,
-            currentStock: parseFloat(prod.quantidade) || 0,
+            product: prod['Descrição produto'] || prod['Produto'] || 'Produto',
+            currentStock: parseFloat(prod['Quantidade']) || 0,
             daysUntilStockout,
-            estimatedLoss: parseFloat(prod.valor_total) || 0 * daysUntilStockout * 1,
+            estimatedLoss: parseFloat(prod['Valor total']) || 0 * daysUntilStockout * 1,
             priority: 1,
             timestamp: new Date()
           });
         } else if (daysUntilStockout < 7) {
           alerts.push({
             type: 'WARNING',
-            title: `${prod.descricao_produto || prod.produto}: Atenção - ${daysUntilStockout.toFixed(1)} dias`,
+            title: `${prod['Descrição produto'] || prod['Produto'] || 'Produto'}: Atenção - ${daysUntilStockout.toFixed(1)} dias`,
             action: 'MONITORAR',
-            product: prod.descricao_produto || prod.produto,
+            product: prod['Descrição produto'] || prod['Produto'] || 'Produto',
             priority: 2,
             timestamp: new Date()
           });
@@ -284,17 +278,94 @@ Resonda APENAS em JSON estruturado.`;
     }
 
     try {
-      // Monta contexto
-      const context = `
-Você é o Supervisor IA do K11 - Sistema de Gestão Operacional e Comercial.
-Tem acesso total a: vendas, estoque, PDVs, fornecedores, movimentação.
+      // Busca dados reais do datastore para enriquecer o contexto
+      const [produtos, pdvRows, fornecedores] = await Promise.all([
+        state.datastore.get('produtos'),
+        state.datastore.get('pdv'),
+        state.datastore.get('fornecedor'),
+      ]);
 
-CONTEXTO ATUAL:
-- PDVs: ${Array.from(state.pdvPerformance.values()).map(p => `${p.name} (R$ ${p.salesToday})`).join(', ')}
-- Alertas críticos: ${state.operationalAlerts.filter(a => a.type === 'CRITICAL').length}
-- Hora: ${new Date().toLocaleString('pt-BR')}
+      // Busca inteligente: extrai palavras-chave da pergunta e filtra produtos relevantes
+      const stopWords = new Set(['do','da','de','o','a','os','as','um','uma','me','qual','é','o','código','produto','tem','no','na','em','para','por','com']);
+      const palavras = userMessage.toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length > 2 && !stopWords.has(w));
 
-Responda de forma direta, acionável e estratégica.`;
+      let produtosFiltrados = produtos;
+      if (palavras.length > 0) {
+        produtosFiltrados = produtos.filter(p => {
+          const haystack = `${p['Produto']} ${p['Descrição produto']} ${p['Texto breve material'] || ''}`.toLowerCase();
+          return palavras.some(w => haystack.includes(w));
+        });
+      }
+
+      // Se busca retornou resultados usa eles, senão usa top 20 por quantidade
+      const listaProdutos = produtosFiltrados.length > 0
+        ? produtosFiltrados.slice(0, 30)
+        : produtos.sort((a, b) => (parseFloat(b['Quantidade']) || 0) - (parseFloat(a['Quantidade']) || 0)).slice(0, 20);
+
+      const topProdutos = listaProdutos
+        .map(p => `[${p['Produto']}] ${p['Descrição produto']} — Qtd: ${p['Quantidade']} | Valor: R$${p['Valor total']}`)
+        .join('\n');
+
+      const buscaInfo = produtosFiltrados.length > 0
+        ? `(${produtosFiltrados.length} produto(s) encontrado(s) para: "${palavras.join(', ')}")`
+        : '(top 20 por estoque)';
+
+      // Produtos com estoque zerado ou crítico (< 5)
+      const rupturas = produtos
+        .filter(p => (parseFloat(p['Quantidade']) || 0) < 5)
+        .slice(0, 10)
+        .map(p => `[${p['Produto']}] ${p['Descrição produto']} — Qtd: ${p['Quantidade']}`)
+        .join('\n') || 'Nenhuma';
+
+      // Vendas por loja (hoje)
+      const hoje = new Date().toISOString().slice(0, 10);
+      const vendasPorLoja = {};
+      for (const row of pdvRows) {
+        const loja = row['Loja'];
+        if (!loja) continue;
+        if (row['Data de lançamento do cupom fiscal'] === hoje) {
+          vendasPorLoja[loja] = (vendasPorLoja[loja] || 0) + (parseFloat(row['Quantidade vendida']) || 0);
+        }
+      }
+      const vendasStr = Object.entries(vendasPorLoja)
+        .sort((a, b) => b[1] - a[1])
+        .map(([loja, qtd]) => `Loja ${loja}: ${qtd} un.`)
+        .join(' | ') || 'Sem vendas registradas hoje';
+
+      // Fornecedores
+      const fornStr = fornecedores
+        .slice(0, 5)
+        .map(f => `${f['FIELD12']} — NF: ${f['AGENDAMENTOS POR FORNECEDOR']}`)
+        .join('\n') || 'Nenhum';
+
+      // Monta contexto completo com dados reais
+      const context = `Você é o Supervisor IA do K11 OMNI ELITE - Sistema de Gestão Operacional.
+Você TEM ACESSO DIRETO aos dados abaixo. Responda com dados concretos, sem sugerir "consultar o sistema".
+
+=== VENDAS HOJE (${hoje}) ===
+${vendasStr}
+
+=== ESTOQUE — PRODUTOS RELEVANTES ${buscaInfo} ===
+${topProdutos}
+
+=== RUPTURAS / ESTOQUE CRÍTICO ===
+${rupturas}
+
+=== FORNECEDORES AGENDADOS ===
+${fornStr}
+
+=== ALERTAS ATIVOS ===
+Críticos: ${state.operationalAlerts.filter(a => a.type === 'CRITICAL').length}
+Warnings: ${state.operationalAlerts.filter(a => a.type === 'WARNING').length}
+
+Hora: ${new Date().toLocaleString('pt-BR')}
+Total produtos em estoque: ${produtos.length}
+Total registros PDV: ${pdvRows.length}
+
+Responda de forma DIRETA e OBJETIVA usando os dados acima. Se o produto for perguntado, busque pelo código ou descrição na lista acima.`;
 
       // Adiciona histórico
       const messages = [

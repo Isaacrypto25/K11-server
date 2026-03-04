@@ -191,24 +191,23 @@ const decisionEngine = (() => {
     const results = [];
 
     try {
-      const { data: pdvs, error } = await state.supabase
-        .from('pdv')
-        .select('loja, data_lancamento, quantidade_vendida')
-        .gte('data_lancamento', new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10));
+      // Lê do cache do datastore
+      const pdvRows = await state.datastore.get('pdv');
 
-      if (error) throw error;
-
-      // Agrega registros por loja
       const hoje = new Date().toISOString().slice(0, 10);
       const semanaAtras = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+      const mesAtras = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
       const lojaMap = {};
-      for (const row of pdvs) {
-        const loja = row.loja;
+      for (const row of pdvRows) {
+        const loja = row['Loja'];
+        if (!loja) continue;
+        const data = row['Data de lançamento do cupom fiscal'];
+        if (data < mesAtras) continue;
         if (!lojaMap[loja]) lojaMap[loja] = { id: loja, nome: loja, vendas_hoje: 0, vendas_semana: 0, vendas_mes: 0, ticket_medio: 0, margem_operacional: 0, clientes_hoje: 0 };
-        const qtd = parseFloat(row.quantidade_vendida) || 0;
+        const qtd = parseFloat(row['Quantidade vendida']) || 0;
         lojaMap[loja].vendas_mes += qtd;
-        if (row.data_lancamento >= semanaAtras) lojaMap[loja].vendas_semana += qtd;
-        if (row.data_lancamento === hoje) lojaMap[loja].vendas_hoje += qtd;
+        if (data >= semanaAtras) lojaMap[loja].vendas_semana += qtd;
+        if (data === hoje) lojaMap[loja].vendas_hoje += qtd;
       }
       const pdvsAgregados = Object.values(lojaMap);
 
@@ -296,15 +295,11 @@ const decisionEngine = (() => {
 
   async function _getRuptureRate(pdvId) {
     try {
-      // % de produtos com estoque zero no PDV
-      const { data, error } = await state.supabase
-        .from('produtos')
-        .select('id, qtd_disponivel')
-        .eq('pdv_id', pdvId);
-
-      if (error || !data?.length) return 0;
-      const zeros = data.filter(p => (p.qtd_disponivel || 0) <= 0).length;
-      return (zeros / data.length) * 100;
+      // % de produtos com estoque zero — lê do datastore
+      const prods = await state.datastore.get('produtos');
+      if (!prods?.length) return 0;
+      const zeros = prods.filter(p => (parseFloat(p['Quantidade']) || 0) <= 0).length;
+      return (zeros / prods.length) * 100;
     } catch (_) { return 0; }
   }
 
@@ -368,13 +363,19 @@ const decisionEngine = (() => {
     const forecasts = [];
 
     try {
-      const { data: products, error } = await state.supabase
-        .from('produtos')
-        .select('id, produto, descricao_produto, quantidade, qtd_disponivel_uma, valor_total, pessoa_autorizada')
-        .order('quantidade', { ascending: true })
-        .limit(30);
-
-      if (error) throw error;
+      // Lê do cache do datastore, ordena por quantidade crescente (mais críticos primeiro)
+      const allProdutos = await state.datastore.get('produtos');
+      const products = allProdutos
+        .sort((a, b) => (parseFloat(a['Quantidade']) || 0) - (parseFloat(b['Quantidade']) || 0))
+        .slice(0, 30)
+        .map(p => ({
+          id:                p._id,
+          nome:              p['Descrição produto'] || p['Produto'],
+          qtd_disponivel:    parseFloat(p['Quantidade']) || 0,
+          consumo_diario:    1,
+          categoria:         p['Denom.tipo estoque'] || 'Hidráulica',
+          fornecedor_id:     null,
+        }));
 
       for (const product of products) {
         const forecast = await forecastProductDemand(product);
@@ -411,9 +412,9 @@ const decisionEngine = (() => {
 
       return {
         productId:         product.id,
-        productName:       product.descricao_produto || product.produto,
+        productName:       product.nome,
         category:          'Hidráulica',
-        currentStock:      (parseFloat(product.quantidade) || 0),
+        currentStock:      product.qtd_disponivel,
 
         // Previsão por horizonte
         forecast7d:        groqForecast?.qty7d   || seasonality.avg7d   * 7,
@@ -427,8 +428,8 @@ const decisionEngine = (() => {
         weeklyPattern:     seasonality.weeklyPattern,
 
         // Risco
-        daysUntilStockout: (parseFloat(product.quantidade) || 0) > 0 && seasonality.avgDaily > 0
-          ? parseFloat(((parseFloat(product.quantidade) || 0) / seasonality.avgDaily).toFixed(1))
+        daysUntilStockout: product.qtd_disponivel > 0 && seasonality.avgDaily > 0
+          ? parseFloat((product.qtd_disponivel / seasonality.avgDaily).toFixed(1))
           : 999,
         confidence:        groqForecast?.confidence || 'MEDIUM',
         trend:             groqForecast?.trend      || 'STABLE',
@@ -438,7 +439,7 @@ const decisionEngine = (() => {
       };
 
     } catch (err) {
-      state.logger?.error('DECISION-ENGINE', `Erro forecast ${product.descricao_produto || product.produto}`, { error: err.message });
+      state.logger?.error('DECISION-ENGINE', `Erro forecast ${product.nome}`, { error: err.message });
       return _buildSimpleForecast(product);
     }
   }
@@ -514,8 +515,8 @@ const decisionEngine = (() => {
       const prompt = `
 Você é um especialista em previsão de demanda para distribuidoras de materiais hidráulicos.
 
-PRODUTO: ${product.descricao_produto || product.produto} (${'Hidráulica' || 'Hidráulica'})
-ESTOQUE ATUAL: ${(parseFloat(product.quantidade) || 0)} unidades
+PRODUTO: ${product.nome} (${'Hidráulica' || 'Hidráulica'})
+ESTOQUE ATUAL: ${product.qtd_disponivel} unidades
 
 PADRÃO DE SAZONALIDADE CALCULADO:
 - Média diária: ${seasonality.avgDaily.toFixed(1)} unidades
@@ -551,8 +552,8 @@ Responda APENAS com JSON válido, sem markdown:
     const daily = 1 || 1;
     return {
       productId:         product.id,
-      productName:       product.descricao_produto || product.produto,
-      currentStock:      (parseFloat(product.quantidade) || 0),
+      productName:       product.nome,
+      currentStock:      product.qtd_disponivel,
       forecast7d:        daily * 7,
       forecast14d:       daily * 14,
       forecast30d:       daily * 30,
@@ -560,7 +561,7 @@ Responda APENAS com JSON válido, sem markdown:
       peakDays:          [],
       troughDays:        [],
       weeklyPattern:     [],
-      daysUntilStockout: daily > 0 ? parseFloat(((parseFloat(product.quantidade) || 0) / daily).toFixed(1)) : 999,
+      daysUntilStockout: daily > 0 ? parseFloat((product.qtd_disponivel / daily).toFixed(1)) : 999,
       confidence:        'LOW',
       trend:             'STABLE',
       groqInsight:       null,
@@ -716,14 +717,9 @@ Responda APENAS com JSON válido, sem markdown:
 
   async function _getSupplier(productId) {
     try {
-      const { data: prod } = await state.supabase
-        .from('produtos').select('fornecedor_id').eq('id', productId).single();
-      if (!prod?.fornecedor_id) return null;
-
-      const { data: sup } = await state.supabase
-        .from('fornecedores').select('id, lead_time_dias')
-        .eq('id', prod.fornecedor_id).single();
-      return sup || null;
+      // Usa datastore — fornecedor_id não existe no schema atual, retorna null
+      const forn = await state.datastore.get('fornecedor');
+      return forn?.[0] ? { id: forn[0]._id, lead_time_dias: 7 } : null;
     } catch (_) { return null; }
   }
 

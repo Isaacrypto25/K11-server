@@ -75,13 +75,20 @@ const priceIntel = (() => {
 
   async function fetchMyProducts() {
     try {
-      const { data, error } = await state.supabase
-        .from('produtos')
-        .select('id, produto, descricao_produto, quantidade, qtd_disponivel_uma, valor_total, pessoa_autorizada')
-        .order('valor_total', { ascending: false })
-        .limit(state.maxProductsPerScan);
-      if (error) throw error;
-      return data || [];
+      // Lê do cache do datastore em vez de query direta ao Supabase
+      const todos = await state.datastore.get('produtos');
+      // Ordena por valor total desc e limita
+      return todos
+        .sort((a, b) => (parseFloat(b['Valor total']) || 0) - (parseFloat(a['Valor total']) || 0))
+        .slice(0, state.maxProductsPerScan)
+        .map(p => ({
+          id:              p._id,
+          produto:         p['Produto'],
+          descricao_produto: p['Descrição produto'],
+          quantidade:      p['Quantidade'],
+          qtd_disponivel_uma: p['Qtd.disponível UMA'],
+          valor_total:     p['Valor total'],
+        }));
     } catch (err) {
       state.logger?.error('PRICE-INTEL', 'Erro ao buscar produtos', { error: err.message });
       return [];
@@ -582,9 +589,16 @@ Responda APENAS com JSON válido, sem markdown:
     forceFullScan: runFullScan,
     scanProductPrice: async (productId) => {
       try {
-        const { data } = await state.supabase
-          .from('produtos').select('*').eq('id', productId).single();
-        return data ? scanProductPrice(data) : null;
+        const prods = await state.datastore.get('produtos');
+        const p = prods.find(x => x._id === productId || x._id === Number(productId));
+        if (!p) return null;
+        return scanProductPrice({
+          id: p._id,
+          produto: p['Produto'],
+          descricao_produto: p['Descrição produto'],
+          quantidade: p['Quantidade'],
+          valor_total: p['Valor total'],
+        });
       } catch (_) { return null; }
     },
     getState: () => ({
