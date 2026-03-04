@@ -426,9 +426,9 @@ const K11AuthUI = (() => {
             <div class="auth-field">
                 <label class="auth-label">LDAP</label>
                 <div class="auth-input-wrap">
-                    <input id="f-ldap" class="auth-input" type="text" spellcheck="false" autocorrect="off" autocapitalize="off"
+                    <input id="f-ldap" class="auth-input" type="text"
                            inputmode="numeric" maxlength="8"
-                           placeholder="73xxxxxx" autocomplete="off">
+                           placeholder="73xxxxxx" autocomplete="new-password-x" readonly onfocus="this.removeAttribute('readonly')">
                     <span class="auth-input-icon" id="icon-ldap"></span>
                 </div>
                 <div class="auth-field-error" id="err-ldap"></div>
@@ -438,7 +438,7 @@ const K11AuthUI = (() => {
                 <label class="auth-label">Senha</label>
                 <div class="auth-input-wrap">
                     <input id="f-senha" class="auth-input" type="password"
-                           placeholder="••••••••" autocomplete="off">
+                           placeholder="••••••••" autocomplete="new-password">
                 </div>
                 <div class="auth-field-error" id="err-senha"></div>
             </div>
@@ -480,9 +480,9 @@ const K11AuthUI = (() => {
             <div class="auth-field">
                 <label class="auth-label">LDAP</label>
                 <div class="auth-input-wrap">
-                    <input id="f-ldap" class="auth-input" type="text" spellcheck="false" autocorrect="off" autocapitalize="off"
+                    <input id="f-ldap" class="auth-input" type="text"
                            inputmode="numeric" maxlength="8"
-                           placeholder="73xxxxxx" autocomplete="off">
+                           placeholder="73xxxxxx" autocomplete="new-password-x" readonly onfocus="this.removeAttribute('readonly')">
                     <span class="auth-input-icon" id="icon-ldap"></span>
                 </div>
                 <div class="auth-field-error" id="err-ldap"></div>
@@ -491,8 +491,8 @@ const K11AuthUI = (() => {
             <div class="auth-field">
                 <label class="auth-label">Email corporativo</label>
                 <div class="auth-input-wrap">
-                    <input id="f-email" class="auth-input" type="text" inputmode="email" spellcheck="false" autocorrect="off" autocapitalize="off"
-                           placeholder="nome@obramax.com.br" autocomplete="off">
+                    <input id="f-email" class="auth-input" type="email"
+                           placeholder="nome@obramax.com.br" autocomplete="new-password-x" readonly onfocus="this.removeAttribute('readonly')">
                     <span class="auth-input-icon" id="icon-email"></span>
                 </div>
                 <div class="auth-field-error" id="err-email"></div>
@@ -539,7 +539,7 @@ const K11AuthUI = (() => {
                 <label class="auth-label">Nova senha</label>
                 <div class="auth-input-wrap">
                     <input id="f-nova-senha" class="auth-input" type="password"
-                           placeholder="Mínimo 6 caracteres" autocomplete="off">
+                           placeholder="Mínimo 6 caracteres" autocomplete="new-password">
                 </div>
                 <div class="auth-field-error" id="err-nova-senha"></div>
             </div>
@@ -586,9 +586,9 @@ const K11AuthUI = (() => {
             <div class="auth-field">
                 <label class="auth-label">LDAP</label>
                 <div class="auth-input-wrap">
-                    <input id="f-ldap" class="auth-input" type="text" spellcheck="false" autocorrect="off" autocapitalize="off"
+                    <input id="f-ldap" class="auth-input" type="text"
                            inputmode="numeric" maxlength="8"
-                           placeholder="73xxxxxx" autocomplete="off">
+                           placeholder="73xxxxxx" autocomplete="new-password-x" readonly onfocus="this.removeAttribute('readonly')">
                     <span class="auth-input-icon" id="icon-ldap"></span>
                 </div>
                 <div class="auth-field-error" id="err-ldap"></div>
@@ -598,8 +598,8 @@ const K11AuthUI = (() => {
             <div class="auth-field">
                 <label class="auth-label">Nome completo</label>
                 <div class="auth-input-wrap">
-                    <input id="f-nome" class="auth-input" type="text" spellcheck="false" autocorrect="off" autocapitalize="off"
-                           placeholder="Nome e sobrenome" autocomplete="off">
+                    <input id="f-nome" class="auth-input" type="text"
+                           placeholder="Nome completo" autocomplete="new-password-x" readonly onfocus="this.removeAttribute('readonly')">
                     <span class="auth-input-icon" id="icon-nome"></span>
                 </div>
                 <div class="auth-field-error" id="err-nome"></div>
@@ -608,8 +608,8 @@ const K11AuthUI = (() => {
             <div class="auth-field">
                 <label class="auth-label">Email corporativo</label>
                 <div class="auth-input-wrap">
-                    <input id="f-email" class="auth-input" type="text" inputmode="email" spellcheck="false" autocorrect="off" autocapitalize="off"
-                           placeholder="rsantos@obramax.com.br" autocomplete="off">
+                    <input id="f-email" class="auth-input" type="email"
+                           placeholder="seu@obramax.com.br" autocomplete="new-password-x" readonly onfocus="this.removeAttribute('readonly')">
                     <span class="auth-input-icon" id="icon-email"></span>
                 </div>
                 <div class="auth-field-error" id="err-email"></div>
@@ -620,7 +620,7 @@ const K11AuthUI = (() => {
                 <label class="auth-label">Senha</label>
                 <div class="auth-input-wrap">
                     <input id="f-senha" class="auth-input" type="password"
-                           placeholder="Mínimo 6 caracteres" autocomplete="off">
+                           placeholder="Mínimo 6 caracteres" autocomplete="new-password">
                 </div>
                 <div class="auth-field-error" id="err-senha"></div>
             </div>
