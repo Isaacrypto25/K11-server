@@ -208,25 +208,8 @@ const supervisor = (() => {
         }
       }
 
-      // Recebimentos atrasados
-      const { data: overduePOs, error: poError } = await state.supabase
-        .from('purchase_orders')
-        .select('id, fornecedor_id, data_prevista, produtos')
-        .lt('data_prevista', new Date().toISOString())
-        .eq('status', 'PENDING');
-
-      if (poError) throw poError;
-
-      for (const po of overduePOs) {
-        const daysOverdue = Math.floor((Date.now() - new Date(po.data_prevista)) / (24 * 60 * 60 * 1000));
-        alerts.push({
-          type: 'CRITICAL',
-          title: `PO atrasada: ${daysOverdue} dias`,
-          action: 'FOLLOW_UP',
-          priority: 3,
-          timestamp: new Date()
-        });
-      }
+      // Recebimentos atrasados: tabela purchase_orders não configurada ainda
+      // TODO: criar tabela purchase_orders no Supabase para ativar este bloco
 
       state.operationalAlerts = alerts.sort((a, b) => a.priority - b.priority);
       state.logger?.info('SUPERVISOR', `Análise operacional: ${alerts.length} alertas`);

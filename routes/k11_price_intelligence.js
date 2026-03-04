@@ -77,8 +77,8 @@ const priceIntel = (() => {
     try {
       const { data, error } = await state.supabase
         .from('produtos')
-        .select('id, nome, preco, categoria, fornecedor_id, qtd_disponivel, consumo_diario')
-        .order('preco', { ascending: false })
+        .select('id, produto, descricao_produto, quantidade, qtd_disponivel_uma, valor_total, pessoa_autorizada')
+        .order('valor_total', { ascending: false })
         .limit(state.maxProductsPerScan);
       if (error) throw error;
       return data || [];
@@ -136,13 +136,13 @@ const priceIntel = (() => {
 
   async function scanProductPrice(product) {
     try {
-      state.logger?.debug('PRICE-INTEL', `Buscando: ${product.nome}`);
+      state.logger?.debug('PRICE-INTEL', `Buscando: ${product.descricao_produto || product.produto}`);
 
-      const scrapedPrices = await scrapeProductPrices(product.nome, product.categoria);
+      const scrapedPrices = await scrapeProductPrices(product.descricao_produto || product.produto, 'Hidráulica');
       const analysis      = await analyzeWithGroq(product, scrapedPrices);
       if (!analysis) return null;
 
-      const myPrice   = parseFloat(product.preco) || 0;
+      const myPrice   = parseFloat(parseFloat(product.valor_total) || 0) || 0;
       const marketAvg = analysis.marketAvgPrice   || myPrice;
       const diffPct   = myPrice > 0
         ? parseFloat(((myPrice - marketAvg) / marketAvg * 100).toFixed(1))
@@ -150,8 +150,8 @@ const priceIntel = (() => {
 
       return {
         productId:          product.id,
-        productName:        product.nome,
-        category:           product.categoria || 'Geral',
+        productName:        product.descricao_produto || product.produto,
+        category:           'Hidráulica' || 'Geral',
         myPrice,
         marketAvgPrice:     marketAvg,
         lowestMarketPrice:  analysis.lowestPrice    || myPrice,
@@ -165,7 +165,7 @@ const priceIntel = (() => {
         scannedAt:          new Date(),
       };
     } catch (err) {
-      state.logger?.error('PRICE-INTEL', `Erro ao escanear ${product.nome}`, { error: err.message });
+      state.logger?.error('PRICE-INTEL', `Erro ao escanear ${product.descricao_produto || product.produto}`, { error: err.message });
       return null;
     }
   }
@@ -234,16 +234,16 @@ const priceIntel = (() => {
     try {
       const hasData     = scrapedPrices.length > 0;
       const pricesText  = hasData
-        ? scrapedPrices.map(p => `- ${p.store}: R$ ${p.price} (${p.title || product.nome})`).join('\n')
+        ? scrapedPrices.map(p => `- ${p.store}: R$ ${p.price} (${p.title || product.descricao_produto || product.produto})`).join('\n')
         : 'Sem dados de scraping — use conhecimento de mercado para produtos similares no Brasil.';
 
       const prompt = `
 Você é um analista de preços especialista em materiais hidráulicos e construção civil no Brasil.
 
 PRODUTO:
-- Nome: ${product.nome}
-- Categoria: ${product.categoria || 'Materiais Hidráulicos'}
-- Meu preço: R$ ${product.preco}
+- Nome: ${product.descricao_produto || product.produto}
+- Categoria: ${'Hidráulica' || 'Materiais Hidráulicos'}
+- Meu preço: R$ ${parseFloat(product.valor_total) || 0}
 
 PREÇOS COLETADOS (web scraping):
 ${pricesText}
