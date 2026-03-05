@@ -183,7 +183,7 @@ const Actions = {
         const marca2Atual = duelo.marcas[marca2Idx];
         const marca2Anterior = { qAnterior: marca2Atual.qAnterior, marca: marca2Atual.marca };
 
-        const comp = bi.analisarComparacao(marca1Atual, marca1Anterior, marca2Atual, marca2Anterior);
+        const comp = APP.rankings.bi.analisarComparacao(marca1Atual, marca1Anterior, marca2Atual, marca2Anterior);
         if (!comp) return;
 
         const overlay = document.getElementById('modal-overlay');
