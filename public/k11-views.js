@@ -524,6 +524,10 @@ const Views = {
                                                             onmouseleave="this.style.borderColor='var(--border-mid)';this.style.color='var(--text-soft)'">
                                                             DETALHES
                                                         </button>
+                                                        <button onclick="APP.actions.showComparacaoModal(${di})"
+                                                            style="padding:4px 8px;border-radius:5px;border:1px solid #3B82F6;background:rgba(59,130,246,.1);color:#3B82F6;font-size:9px;font-weight:700;letter-spacing:.5px;cursor:pointer;margin-left:4px;white-space:nowrap">
+                                                            📊 COMPARAR
+                                                        </button>
                                                     </div>
                                                 </div>
 

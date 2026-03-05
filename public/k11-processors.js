@@ -326,26 +326,6 @@ const Processors = {
             return { ...s, diff: parseFloat(diff.toFixed(1)), perc: parseFloat(perc.toFixed(1)) };
         }).sort((a,b) => Math.abs(b.perc) - Math.abs(a.perc));
 
-        // ── 6.5 NORMALIZAÇÃO DE SKU PARA COMPARAÇÃO ─────────────────
-        // Função para normalizar descrições de SKU, permitindo comparação
-        // de "mesmos produtos" em diferentes marcas
-        const _normalizarSKU = (desc) => {
-            if (!desc) return '';
-            return desc
-                .toUpperCase()
-                .trim()
-                .replace(/^(PLUG|UNIAO|ADAPTECH|TIGRE|OUTRA|HIDRAULICA|ADAPTADOR|CONEXAO|TUBO|TIGRE INSTALACOES)\s+/gi, '')
-                .replace(/\s+(FOR|F|ARA|PARA|AGUA|QUENTE|FRIA|AGUA FRIA|AGUA QUENTE)\s*$/gi, '')
-                .replace(/\s+[A-Z]*\d{3,}/g, '')
-                .replace(/\d{1,2}MM(X\d)?/g, '')
-                .replace(/[^A-Z0-9\s]/g, '')
-                .split(/\s+/)
-                .filter(t => t.length > 1)
-                .sort()
-                .join(' ')
-                .trim();
-        };
-
         // ── 7. DUELO DE MARCAS (Jaccard matching) ───────────────────
         //
         // Pré-agrupamento por chave de triagem → depois valida com Jaccard.
@@ -397,12 +377,7 @@ const Processors = {
                 const key  = `${sub}||${[...rep.tokSet].sort().join('+')}`;
 
                 if (!dueloMap.has(key)) {
-                    dueloMap.set(key, { 
-                        base: baseLabel, 
-                        sub, 
-                        marcaMap: new Map(),
-                        skusNormalizados: new Map()
-                    });
+                    dueloMap.set(key, { base: baseLabel, sub, marcaMap: new Map() });
                 }
                 const d = dueloMap.get(key);
 
@@ -420,22 +395,6 @@ const Processors = {
                     m.qAnterior += item.qAnterior;
                     m.skus.push(item.id);
                     m.skuItems.push(item);
-                    
-                    // ← NOVO: indexar por SKU normalizado para comparação
-                    const skuNorm = _normalizarSKU(item.txt);
-                    if (skuNorm) {
-                        if (!d.skusNormalizados.has(skuNorm)) {
-                            d.skusNormalizados.set(skuNorm, []);
-                        }
-                        d.skusNormalizados.get(skuNorm).push({
-                            marca: item.marca,
-                            skuId: item.id,
-                            skuDesc: item.txt,
-                            qAtual: item.qAtual,
-                            qAnterior: item.qAnterior,
-                            diff: item.qAtual - item.qAnterior
-                        });
-                    }
                 });
             });
         });
@@ -485,8 +444,9 @@ const Processors = {
             skus:        skusSorted,
             subsecoes,
             marcas,
-            skuParaDuelo,   // Map(skuId → [índices em marcas[]])
+            skuParaDuelo,
             isMock:      !temDadosReais,
+            analisarComparacao: _analisarComparacao
         };
 
         EventBus.emit('bi:atualizado', { temDadosReais });
