@@ -121,10 +121,6 @@ const Actions = {
 
     // ── BI INTELLIGENCE ──────────────────────────────────────────
     
-    // ── NOVO: COMPARAÇÃO TEMPORAL (Atual vs Anterior) ─────────────────
-    
-    // ── NOVO: MOSTRAR MODAL DE SELE
-    // ── NOVO: MOSTRAR MODAL DE SELEÇÃO DE MARCAS PARA COMPARAÇÃO ─────
     showComparacaoModal(dueloIdx) {
         const bi = APP.rankings.bi;
         const duelo = bi?.marcas?.[dueloIdx];
@@ -132,156 +128,45 @@ const Actions = {
             alert('Este produto não tem 2 marcas para comparar');
             return;
         }
-
+        
         const overlay = document.getElementById('modal-overlay');
         if (!overlay) return;
 
-        const esc_ = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-        overlay.innerHTML = `
-        <div style="padding:20px;border-radius:12px;background:var(--card-bg);border:1px solid var(--border);max-width:500px">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-                <h2 style="margin:0;font-size:16px;color:var(--primary)">Comparar Marcas</h2>
-                <button onclick="document.getElementById('modal-overlay').classList.remove('active')" style="padding:4px 8px;border:none;background:var(--danger);color:white;border-radius:4px;cursor:pointer;font-size:12px">✕</button>
-            </div>
-
-            <div style="font-size:11px;color:var(--text-muted);margin-bottom:16px">${esc_(duelo.base)}</div>
-
-            <div style="margin-bottom:16px">
-                <label style="display:block;font-size:10px;color:var(--text-muted);margin-bottom:4px;font-weight:700">MARCA 1</label>
-                <select id="marca1-select" style="width:100%;padding:10px;border:1px solid var(--primary);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;font-weight:700;cursor:pointer">
-                    ${duelo.marcas.map((m, idx) => `<option value="${idx}">${esc_(m.marca)}</option>`).join('')}
-                </select>
-            </div>
-
-            <div style="margin-bottom:20px">
-                <label style="display:block;font-size:10px;color:var(--text-muted);margin-bottom:4px;font-weight:700">MARCA 2</label>
-                <select id="marca2-select" style="width:100%;padding:10px;border:1px solid var(--primary);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;font-weight:700;cursor:pointer">
-                    ${duelo.marcas.map((m, idx) => `<option value="${idx}" ${idx === 1 ? 'selected' : ''}>${esc_(m.marca)}</option>`).join('')}
-                </select>
-            </div>
-
-            <button onclick="(() => {
-                const m1 = parseInt(document.getElementById('marca1-select').value);
-                const m2 = parseInt(document.getElementById('marca2-select').value);
-                if (m1 === m2) { alert('Selecione marcas DIFERENTES'); return; }
-                document.getElementById('modal-overlay').classList.remove('active');
-                setTimeout(() => APP.actions.abrirComparacaoTemporal(${dueloIdx}, m1, m2), 200);
-            })()"
-                style="width:100%;padding:12px;background:var(--primary);color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:12px;transition:all .2s">
-                🔄 COMPARAR MARCAS
-            </button>
-        </div>`;
-
-        overlay.classList.add('active');
-        overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.remove('active'); };
-    },
- m1, m2), 200);
-            })()"
-                style="width:100%;padding:10px;background:var(--primary);color:white;border:none;border-radius:4px;font-weight:700;cursor:pointer;font-size:11px">
-                🔄 COMPARAR
-            </button>
-        </div>`;
-
-        overlay.classList.add('active');
-        overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.remove('active'); };
-    },
-
-    abrirComparacaoTemporal(dueloIdx, marca1Idx, marca2Idx) {
-        const bi = APP.rankings.bi;
-        const duelo = bi?.marcas?.[dueloIdx];
-        if (!duelo || !duelo.marcas[marca1Idx] || !duelo.marcas[marca2Idx]) return;
-
-        const marca1Atual = duelo.marcas[marca1Idx];
-        const marca1Anterior = { qAnterior: marca1Atual.qAnterior, marca: marca1Atual.marca };
-        const marca2Atual = duelo.marcas[marca2Idx];
-        const marca2Anterior = { qAnterior: marca2Atual.qAnterior, marca: marca2Atual.marca };
-
-        const comp = APP.rankings.bi.analisarComparacao(marca1Atual, marca1Anterior, marca2Atual, marca2Anterior);
-        if (!comp) return;
-
-        const overlay = document.getElementById('modal-overlay');
-        if (!overlay) return;
-
-        const esc_ = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-        overlay.innerHTML = `
-        <div style="padding:20px;border-radius:12px;background:var(--card-bg);border:1px solid var(--border);max-width:900px;max-height:90vh;overflow-y:auto">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-                <h2 style="margin:0;font-size:18px;color:var(--primary)">📊 COMPARAÇÃO TEMPORAL</h2>
-                <button onclick="document.getElementById('modal-overlay').classList.remove('active')" style="padding:8px 12px;border:none;background:var(--danger);color:white;border-radius:6px;cursor:pointer">✕</button>
-            </div>
-
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">${esc_(duelo.base)}</div>
-
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px">
-                <!-- COLUNA 1: MARCA 1 (ATUAL) -->
-                <div style="padding:16px;border-radius:8px;background:rgba(255,140,0,.08);border:1px solid rgba(255,140,0,.2)">
-                    <div style="font-size:14px;font-weight:900;color:var(--primary);margin-bottom:12px">👑 ${esc_(comp.marca1)}</div>
-                    <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">ATUAL</div>
-                    <div style="font-size:20px;font-weight:900;font-family:var(--font-mono);color:#F3F4F6">${comp.atual.m1} un</div>
-                    <div style="font-size:10px;color:var(--text-muted);margin-top:8px">Anterior: ${comp.anterior.m1} un</div>
-                </div>
-
-                <!-- COLUNA 2: DIFERENÇA -->
-                <div style="padding:16px;border-radius:8px;background:rgba(100,100,100,.08);border:1px solid var(--border)">
-                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">DIFERENÇA ATUAL</div>
-                    <div style="font-size:24px;font-weight:900;font-family:var(--font-mono);color:${comp.atual.m1 > comp.atual.m2 ? 'var(--success)' : 'var(--danger)'}">${comp.atual.m1 > comp.atual.m2 ? '+' : ''}${comp.atual.diff} un</div>
-                    <div style="font-size:11px;color:var(--text-muted);margin-top:8px">${comp.atual.melhor}</div>
-                </div>
-
-                <!-- COLUNA 3: MARCA 2 (ATUAL) -->
-                <div style="padding:16px;border-radius:8px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2)">
-                    <div style="font-size:14px;font-weight:900;color:#3B82F6;margin-bottom:12px">🔵 ${esc_(comp.marca2)}</div>
-                    <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">ATUAL</div>
-                    <div style="font-size:20px;font-weight:900;font-family:var(--font-mono);color:#F3F4F6">${comp.atual.m2} un</div>
-                    <div style="font-size:10px;color:var(--text-muted);margin-top:8px">Anterior: ${comp.anterior.m2} un</div>
-                </div>
-            </div>
-
-            <!-- VARIAÇÕES -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
-                <div style="padding:16px;border-radius:8px;background:var(--bg);border:1px solid var(--border)">
-                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">VARIAÇÃO ${esc_(comp.marca1)}</div>
-                    <div style="display:flex;align-items:baseline;gap:8px">
-                        <span style="font-size:20px;font-weight:900;font-family:var(--font-mono);color:${comp.variacao.m1_abs > 0 ? 'var(--success)' : 'var(--danger)'}">${comp.variacao.m1_abs > 0 ? '+' : ''}${comp.variacao.m1_abs}</span>
-                        <span style="font-size:14px;color:${comp.variacao.m1_abs > 0 ? 'var(--success)' : 'var(--danger)'};font-weight:700">${comp.variacao.m1_abs > 0 ? '+' : ''}${comp.variacao.m1_perc}%</span>
-                    </div>
-                    <div style="font-size:11px;color:var(--text-muted);margin-top:8px">${comp.trend.m1}</div>
-                </div>
-
-                <div style="padding:16px;border-radius:8px;background:var(--bg);border:1px solid var(--border)">
-                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">VARIAÇÃO ${esc_(comp.marca2)}</div>
-                    <div style="display:flex;align-items:baseline;gap:8px">
-                        <span style="font-size:20px;font-weight:900;font-family:var(--font-mono);color:${comp.variacao.m2_abs > 0 ? 'var(--success)' : 'var(--danger)'}">${comp.variacao.m2_abs > 0 ? '+' : ''}${comp.variacao.m2_abs}</span>
-                        <span style="font-size:14px;color:${comp.variacao.m2_abs > 0 ? 'var(--success)' : 'var(--danger)'};font-weight:700">${comp.variacao.m2_abs > 0 ? '+' : ''}${comp.variacao.m2_perc}%</span>
-                    </div>
-                    <div style="font-size:11px;color:var(--text-muted);margin-top:8px">${comp.trend.m2}</div>
-                </div>
-            </div>
-
-            <!-- STATUS -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
-                <div style="padding:12px;border-radius:8px;background:var(--bg);border:1px solid var(--border);text-align:center">
-                    <div style="font-size:12px;color:var(--text-muted)">STATUS</div>
-                    <div style="font-size:14px;font-weight:900;color:${comp.status.m1 === 'GANHANDO' ? 'var(--success)' : comp.status.m1 === 'PERDENDO' ? 'var(--danger)' : 'var(--text-muted)'};margin-top:4px">${comp.status.m1}</div>
-                </div>
-                <div style="padding:12px;border-radius:8px;background:var(--bg);border:1px solid var(--border);text-align:center">
-                    <div style="font-size:12px;color:var(--text-muted)">STATUS</div>
-                    <div style="font-size:14px;font-weight:900;color:${comp.status.m2 === 'GANHANDO' ? 'var(--success)' : comp.status.m2 === 'PERDENDO' ? 'var(--danger)' : 'var(--text-muted)'};margin-top:4px">${comp.status.m2}</div>
-                </div>
-            </div>
-
-            <!-- VENCEDOR -->
-            <div style="padding:16px;border-radius:8px;background:linear-gradient(135deg,rgba(255,140,0,.2),rgba(255,140,0,.05));border:1px solid rgba(255,140,0,.3);text-align:center">
-                <div style="font-size:14px;font-weight:900;color:var(--primary)">⭐ MELHOR PERFORMANCE</div>
-                <div style="font-size:18px;font-weight:900;color:var(--primary);margin-top:8px">${comp.variacao.vencedor}</div>
-                <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Maior variação absoluta</div>
-            </div>
-
-            <button onclick="document.getElementById('modal-overlay').classList.remove('active')" style="width:100%;padding:12px;margin-top:20px;border:none;background:var(--primary);color:white;border-radius:6px;font-weight:700;cursor:pointer">FECHAR</button>
-        </div>`;
-
+        let html = '<div style="padding:20px;border-radius:12px;background:var(--card-bg);border:1px solid var(--border);max-width:500px">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">';
+        html += '<h2 style="margin:0;font-size:16px;color:var(--primary)">Comparar Marcas</h2>';
+        html += '<button onclick="document.getElementById('modal-overlay').classList.remove('active')" style="padding:4px 8px;border:none;background:var(--danger);color:white;border-radius:4px;cursor:pointer">✕</button>';
+        html += '</div>';
+        
+        html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:16px">' + (duelo.base || '') + '</div>';
+        
+        html += '<div style="margin-bottom:16px">';
+        html += '<label style="display:block;font-size:10px;color:var(--text-muted);margin-bottom:4px;font-weight:700">MARCA 1</label>';
+        html += '<select id="marca1-select" style="width:100%;padding:10px;border:1px solid var(--primary);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px">';
+        duelo.marcas.forEach((m, idx) => {
+            html += '<option value="' + idx + '">' + (m.marca || 'Marca ' + idx) + '</option>';
+        });
+        html += '</select></div>';
+        
+        html += '<div style="margin-bottom:20px">';
+        html += '<label style="display:block;font-size:10px;color:var(--text-muted);margin-bottom:4px;font-weight:700">MARCA 2</label>';
+        html += '<select id="marca2-select" style="width:100%;padding:10px;border:1px solid var(--primary);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px">';
+        duelo.marcas.forEach((m, idx) => {
+            html += '<option value="' + idx + '"' + (idx === 1 ? ' selected' : '') + '>' + (m.marca || 'Marca ' + idx) + '</option>';
+        });
+        html += '</select></div>';
+        
+        html += '<button onclick="(() => { ';
+        html += 'const m1 = parseInt(document.getElementById('marca1-select').value); ';
+        html += 'const m2 = parseInt(document.getElementById('marca2-select').value); ';
+        html += 'if (m1 === m2) { alert('Selecione marcas diferentes'); return; } ';
+        html += 'document.getElementById('modal-overlay').classList.remove('active'); ';
+        html += 'setTimeout(() => APP.actions.abrirComparacaoTemporal(' + dueloIdx + ', m1, m2), 200);';
+        html += '})()" style="width:100%;padding:12px;background:var(--primary);color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer">';
+        html += '🔄 COMPARAR MARCAS</button>';
+        html += '</div>';
+        
+        overlay.innerHTML = html;
         overlay.classList.add('active');
         overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.remove('active'); };
     },
