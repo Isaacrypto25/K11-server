@@ -341,27 +341,105 @@ const Views = {
                     </div>
                 </div>
 
-                <!-- TREND -->
+                <!-- BI INTELIGÊNCIA DE MERCADO v2 -->
                 <div class="op-card no-pad overflow-hid margin-t-10">
+
+                    <!-- Header colapsável -->
                     <div onclick="APP.actions.toggleRanking()" class="intel-header">
                         <span class="label">INTELIGÊNCIA DE MERCADO
-                            ${APP.rankings.growth[0]?.isMock
-                                ? '<span class="badge-mock" title="Dados estimados. Forneça pdvAnterior.json para dados reais.">ESTIMADO</span>'
+                            ${(APP.rankings.bi?.isMock ?? APP.rankings.growth[0]?.isMock)
+                                ? '<span class="badge-mock" title="Dados estimados. Forneça pdvAnterior para dados reais.">ESTIMADO</span>'
                                 : '<span class="badge-real">DADOS REAIS</span>'}
                         </span>
                         <span class="material-symbols-outlined" style="transition:transform .3s;${APP.ui.rankingAberto?'transform:rotate(180deg)':''}">expand_more</span>
                     </div>
-                    <div class="${APP.ui.rankingAberto?'':'display-none'} pad-15">
-                        <div class="dual-grid">
-                            <div>
-                                <div class="label txt-success">▲ GROWTH</div>
-                                ${APP.rankings.growth.map(r => `<div class="trend-item"><div class="trend-header"><b>${esc(r.id)}</b><span class="trend-up">+${esc(String(r.perc))}%</span></div><div class="trend-desc">${esc(r.desc.substring(0,25))}</div><div class="trend-qty micro-txt">${esc(String(r.qAtual))} → ant:${esc(String(Math.round(r.qAnterior)))}</div></div>`).join('')}
-                            </div>
-                            <div>
-                                <div class="label txt-danger">▼ DECLINE</div>
-                                ${APP.rankings.decline.map(r => `<div class="trend-item"><div class="trend-header"><b>${esc(r.id)}</b><span class="trend-down">${esc(String(r.perc))}%</span></div><div class="trend-desc">${esc(r.desc.substring(0,25))}</div><div class="trend-qty micro-txt">${esc(String(r.qAtual))} → ant:${esc(String(Math.round(r.qAnterior)))}</div></div>`).join('')}
-                            </div>
+
+                    <div class="${APP.ui.rankingAberto?'':'display-none'}">
+
+                        <!-- Abas -->
+                        <div style="display:flex;border-bottom:1px solid var(--border);padding:0 15px;gap:0">
+                            ${['sku','subsecao','marcas'].map(tab => {
+                                const labels = { sku:'SKU', subsecao:'SUBSEÇÃO', marcas:'MARCAS' };
+                                const ativo  = (APP.ui.biTab ?? 'sku') === tab;
+                                return `<button onclick="event.stopPropagation();APP.actions.setBiTab('${tab}')" style="flex:1;padding:10px 4px 9px;font-size:10px;font-weight:800;letter-spacing:.8px;background:none;border:none;border-bottom:2px solid ${ativo?'var(--primary)':'transparent'};color:${ativo?'var(--primary)':'var(--text-muted)'};cursor:pointer;transition:color .2s,border-color .2s">${labels[tab]}</button>`;
+                            }).join('')}
                         </div>
+
+                        <!-- ABA SKU -->
+                        ${(APP.ui.biTab ?? 'sku') === 'sku' ? (() => {
+                            const bi      = APP.rankings.bi;
+                            const growth  = bi?.skus?.filter(x=>x.diff>0).slice(0,10) ?? APP.rankings.growth;
+                            const decline = bi?.skus?.filter(x=>x.diff<0).slice(0,10) ?? APP.rankings.decline;
+                            const row = (r, up) => `<div class="trend-item">
+                                <div class="trend-header"><b class="mono" style="font-size:10px">${esc(r.id)}</b><span class="${up?'trend-up':'trend-down'}">${up?'+':''}${esc(String(r.perc))}%</span></div>
+                                <div style="font-size:10px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc((r.desc??'').substring(0,26))}</div>
+                                <div style="display:flex;justify-content:space-between;margin-top:2px">
+                                    <span class="micro-txt txt-muted">${esc(String(r.qAtual))} → ant:${esc(String(Math.round(r.qAnterior)))}</span>
+                                    ${r.marca&&r.marca!=='N/ID'?`<span style="font-size:8px;padding:1px 4px;border-radius:3px;background:rgba(255,140,0,.1);border:1px solid rgba(255,140,0,.2);color:var(--primary)">${esc(r.marca)}</span>`:''}
+                                </div>
+                            </div>`;
+                            return `<div class="pad-15"><div class="dual-grid">
+                                <div><div class="label txt-success" style="margin-bottom:8px">▲ GROWTH</div>${growth.map(r=>row(r,true)).join('')||'<div class="micro-txt txt-muted">Sem dados</div>'}</div>
+                                <div><div class="label txt-danger"  style="margin-bottom:8px">▼ DECLINE</div>${decline.map(r=>row(r,false)).join('')||'<div class="micro-txt txt-muted">Sem dados</div>'}</div>
+                            </div></div>`;
+                        })() : ''}
+
+                        <!-- ABA SUBSEÇÃO -->
+                        ${(APP.ui.biTab ?? 'sku') === 'subsecao' ? (() => {
+                            const subs = APP.rankings.bi?.subsecoes ?? [];
+                            if (!subs.length) return `<div class="pad-15 centered micro-txt txt-muted">Sem dados de subseção</div>`;
+                            return `<div style="padding:12px 15px;display:flex;flex-direction:column;gap:6px">
+                                ${subs.slice(0,20).map(s => {
+                                    const up  = s.perc >= 0;
+                                    const cor = up ? 'var(--success)' : 'var(--danger)';
+                                    const pct = Math.min(Math.abs(s.perc), 100);
+                                    return `<div onclick="APP.actions.abrirSubsecao('${esc(s.sub.replace(/'/g,"\\'"))}')"
+                                        style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:10px 12px;border-radius:8px;background:var(--bg);border:1px solid var(--border);cursor:pointer;transition:border-color .15s"
+                                        onmouseenter="this.style.borderColor='var(--border-bright)'"
+                                        onmouseleave="this.style.borderColor='var(--border)'">
+                                        <div>
+                                            <div style="font-size:11px;font-weight:700;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:190px">${esc(s.sub)}</div>
+                                            <div style="height:3px;border-radius:2px;background:var(--border);overflow:hidden"><div style="width:${pct}%;height:100%;background:${cor};border-radius:2px"></div></div>
+                                            <div style="display:flex;gap:8px;margin-top:4px"><span class="micro-txt txt-muted">${(s.skus?.length??0)} SKUs</span><span class="micro-txt txt-muted">${esc(String(s.qAtual))} un</span></div>
+                                        </div>
+                                        <div style="text-align:right;flex-shrink:0">
+                                            <div style="font-size:14px;font-weight:800;font-family:var(--font-mono);color:${cor}">${up?'+':''}${esc(String(s.perc))}%</div>
+                                            <div class="micro-txt" style="color:${cor}">${up?'+':''}${esc(String(s.diff))} un</div>
+                                            <div style="font-size:8px;color:var(--text-muted);margin-top:3px">DETALHE →</div>
+                                        </div>
+                                    </div>`;
+                                }).join('')}
+                            </div>`;
+                        })() : ''}
+
+                        <!-- ABA MARCAS -->
+                        ${(APP.ui.biTab ?? 'sku') === 'marcas' ? (() => {
+                            const duelos = APP.rankings.bi?.marcas ?? [];
+                            if (!duelos.length) return `<div class="pad-15 centered micro-txt txt-muted">Sem duelos de marca detectados</div>`;
+                            return `<div style="padding:12px 15px;display:flex;flex-direction:column;gap:10px">
+                                ${duelos.slice(0,15).map(d => {
+                                    const total = d.totalVol || 1;
+                                    return `<div style="padding:11px 12px;border-radius:8px;background:var(--bg);border:1px solid var(--border)">
+                                        <div style="font-size:10px;font-weight:800;color:var(--text-muted);letter-spacing:.8px;margin-bottom:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.base.substring(0,40))}</div>
+                                        <div style="display:flex;flex-direction:column;gap:5px">
+                                            ${d.marcas.slice(0,4).map((m,i) => {
+                                                const share = Math.round((m.qAtual/total)*100);
+                                                const up    = m.diff > 0;
+                                                const cor   = up?'var(--success)':m.diff<0?'var(--danger)':'var(--text-muted)';
+                                                const lider = i === 0;
+                                                return `<div style="display:grid;grid-template-columns:70px 1fr 52px;gap:6px;align-items:center">
+                                                    <div style="font-size:10px;font-weight:${lider?800:600};color:${lider?'var(--primary)':'var(--text-soft)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lider?'👑 ':''}${esc(m.marca)}</div>
+                                                    <div style="height:5px;border-radius:3px;background:var(--border);overflow:hidden"><div style="width:${share}%;height:100%;background:${lider?'var(--primary)':'var(--border-bright)'};border-radius:3px"></div></div>
+                                                    <div style="text-align:right"><span style="font-size:10px;font-weight:700;font-family:var(--font-mono)">${share}%</span><span style="font-size:9px;color:${cor};margin-left:3px">${m.diff>0?'+':''}${esc(String(m.diff))}</span></div>
+                                                </div>`;
+                                            }).join('')}
+                                        </div>
+                                        <div style="margin-top:6px;font-size:8px;color:var(--text-muted)">${esc(d.sub)} · ${d.totalVol} un total</div>
+                                    </div>`;
+                                }).join('')}
+                            </div>`;
+                        })() : ''}
+
                     </div>
                 </div>`;
         },

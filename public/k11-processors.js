@@ -147,42 +147,229 @@ const Processors = {
     },
 
     /**
-     * Calcula tendência de crescimento/queda por SKU comparando período atual vs anterior.
-     * Se pdvAnterior.json não existir, usa valores estimados (modo MOCK).
+     * ══════════════════════════════════════════════════════════════════
+     * BI ENGINE v2 — Inteligência de Mercado Multi-Dimensional
+     * ══════════════════════════════════════════════════════════════════
+     *
+     * Gera 4 estruturas simultâneas a partir de pdv (atual) x pdvAnterior:
+     *
+     *   APP.rankings.bi.skus       → flat list por SKU (igual ao anterior)
+     *   APP.rankings.bi.subsecoes  → agrupado por 'Denominação da subseção'
+     *   APP.rankings.bi.marcas     → duelos de marca (Tigre vs Fortlev, etc.)
+     *   APP.rankings.bi.isMock     → true se pdvAnterior ausente
+     *
+     * Mantém APP.rankings.growth e APP.rankings.decline para
+     * retrocompatibilidade com gerarAcoesPrioritarias().
+     *
+     * Detecção de marca: heurística por token. Candidatos são tokens
+     * do 'Texto breve material' que NÃO são números, unidades ou
+     * palavras genéricas. O token mais incomum no corpus é eleito
+     * como marca (IDF-lite). Fallback: último token alfabético.
      */
     processarBI_DualTrend() {
         const temDadosReais = APP.db.pdvAnterior.length > 0;
         if (!temDadosReais) {
-            console.info('[K11] Trend em modo ESTIMADO — forneça pdvAnterior.json para dados reais.');
+            console.info('[K11] BI em modo ESTIMADO — forneça pdvAnterior para dados reais.');
         }
 
-        const agregar = (arr) => {
+        // ── 1. AGREGAR VENDAS ───────────────────────────────────────
+        const _agregar = (arr) => {
             const m = new Map();
             (Array.isArray(arr) ? arr : []).forEach(v => {
-                const id = String(v?.['Nº do produto'] ?? v?.Produto ?? '').trim();
-                const q  = safeFloat(v?.['Quantidade vendida']);
-                if (id && q > 0) m.set(id, (m.get(id) ?? 0) + q);
+                const id  = String(v?.['Nº do produto'] ?? v?.Produto ?? '').trim();
+                const q   = safeFloat(v?.['Quantidade vendida']);
+                const sub = String(v?.['Denominação da subseção'] ?? v?.['denominacao_subsecao'] ?? '').trim();
+                const txt = String(v?.['Texto breve material']    ?? v?.['texto_breve_material']  ?? '').trim();
+                if (!id) return;
+                if (!m.has(id)) m.set(id, { q: 0, sub, txt });
+                const entry = m.get(id);
+                entry.q  += q;
+                if (!entry.sub && sub) entry.sub = sub;
+                if (!entry.txt && txt) entry.txt = txt;
             });
             return m;
         };
 
-        const mapAtual    = agregar(APP.db.pdv);
-        const mapAnterior = temDadosReais ? agregar(APP.db.pdvAnterior) : null;
+        const mapAtual    = _agregar(APP.db.pdv);
+        const mapAnterior = temDadosReais ? _agregar(APP.db.pdvAnterior) : null;
         const todosSKUs   = new Set([...mapAtual.keys(), ...(mapAnterior?.keys() ?? [])]);
 
+        // ── 2. DETECTAR MARCA (heurística IDF-lite) ─────────────────
+        //
+        // Palavras genéricas/unidades que não são marcas:
+        const STOP = new Set([
+            'DE','DO','DA','E','EM','COM','PARA','POR','A','O','AS','OS',
+            'UN','PC','KG','G','ML','L','M','MT','CM','MM','M2','M3',
+            'CX','FD','RL','KIT','CAIXA','PACOTE','ROLO','BARRA','TUBO',
+            'JOELHO','LUVA','CAP','TE','CURVA','REDUCAO','REGISTRO',
+            'ADAPTADOR','BUCHA','NIPLE','FLANGE','UNIONS','UNION',
+            'PVC','PPR','CPVC','ABS','PE','PP','PB','PEAD','PRETO','BRANCO',
+            'AZUL','VERMELHO','VERDE','CINZA','BEGE','MARROM',
+            '25MM','32MM','40MM','50MM','60MM','75MM','85MM','100MM','110MM',
+            'BSP','NPT','MM','DN','PN','SDR','JEI','JE',
+            'SOLD','ROSCA','FLANGEADO','SOLDAVEL','ROSCAVEL',
+            'SIMPLES','DUPLO','TRIPLO','LONGO','CURTO',
+            'CLASSE','TIPO','SERIE','MODELO','REF','REF.',
+        ]);
+
+        // Monta corpus de tokens para calcular frequência (IDF-lite)
+        const tokenFreq = new Map();
+        const _tokenize = (txt) =>
+            txt.toUpperCase()
+               .replace(/[^A-Z0-9\s]/g, ' ')
+               .split(/\s+/)
+               .filter(t => t.length >= 3 && !/^\d+$/.test(t) && !STOP.has(t));
+
+        mapAtual.forEach(({ txt }) => {
+            const tokens = _tokenize(txt);
+            new Set(tokens).forEach(t => tokenFreq.set(t, (tokenFreq.get(t) ?? 0) + 1));
+        });
+
+        const totalDocs = mapAtual.size || 1;
+
+        // Elege a marca de uma descrição: token com menor freq relativa (mais específico)
+        const _detectMarca = (txt) => {
+            if (!txt) return 'N/ID';
+            const tokens = _tokenize(txt);
+            if (!tokens.length) return 'N/ID';
+            // Filtra tokens candidatos (freq < 30% do corpus = diferenciador de marca)
+            const candidatos = tokens.filter(t => {
+                const freq = tokenFreq.get(t) ?? 0;
+                return freq > 0 && (freq / totalDocs) < 0.30;
+            });
+            if (!candidatos.length) {
+                // fallback: último token alfabético puro
+                const alfa = tokens.filter(t => /^[A-Z]+$/.test(t));
+                return alfa[alfa.length - 1] ?? tokens[tokens.length - 1] ?? 'N/ID';
+            }
+            // Elege o de menor frequência relativa (mais raro = mais específico = mais provável marca)
+            return candidatos.reduce((best, t) =>
+                (tokenFreq.get(t) ?? Infinity) < (tokenFreq.get(best) ?? Infinity) ? t : best
+            );
+        };
+
+        // ── 3. MONTAR LISTA FLAT DE SKUS ────────────────────────────
         const lista = [...todosSKUs].map(id => {
-            const qAtual    = mapAtual.get(id) ?? 0;
+            const atual    = mapAtual.get(id);
+            const ant      = mapAnterior?.get(id);
+            const qAtual    = atual?.q ?? 0;
             const qAnterior = mapAnterior
-                ? (mapAnterior.get(id) ?? 0)
-                : qAtual * (0.7 + Math.random() * 0.3);    // estimativa MOCK
+                ? (ant?.q ?? 0)
+                : qAtual * (0.7 + Math.random() * 0.3); // MOCK
             const diff  = qAtual - qAnterior;
             const perc  = qAnterior > 0 ? (diff / qAnterior) * 100 : (qAtual > 0 ? 100 : 0);
             const pInfo = APP.db.produtos.find(x => x.id === id);
-            return { id, qAtual, qAnterior, perc: parseFloat(perc.toFixed(1)), desc: pInfo?.desc ?? 'N/A', isMock: !temDadosReais };
+
+            // Subseção: prioridade pdv atual > pdvAnterior > produtos
+            const sub = atual?.sub || ant?.sub || '';
+            // Texto breve: prioridade pdv atual > pdvAnterior > descrição produto
+            const txt = atual?.txt || ant?.txt || pInfo?.desc || '';
+            const marca = _detectMarca(txt);
+
+            return {
+                id,
+                desc:      pInfo?.desc ?? txt.substring(0, 40) ?? 'N/A',
+                txt,
+                sub:       sub || 'SEM SUBSEÇÃO',
+                marca,
+                qAtual,
+                qAnterior: parseFloat(qAnterior.toFixed(1)),
+                diff:      parseFloat(diff.toFixed(1)),
+                perc:      parseFloat(perc.toFixed(1)),
+                valTotal:  pInfo?.valTotal ?? 0,
+                isMock:    !temDadosReais,
+            };
         });
 
-        APP.rankings.growth  = [...lista].sort((a, b) => b.perc - a.perc).slice(0, 10);
+        // ── 4. RANKINGS POR SKU ─────────────────────────────────────
+        const skusSorted = [...lista].sort((a, b) => b.perc - a.perc);
+        APP.rankings.growth  = skusSorted.slice(0, 10);
         APP.rankings.decline = [...lista].sort((a, b) => a.perc - b.perc).slice(0, 10);
+
+        // ── 5. RANKING POR SUBSEÇÃO ──────────────────────────────────
+        const subMap = new Map();
+        lista.forEach(item => {
+            const key = item.sub;
+            if (!subMap.has(key)) {
+                subMap.set(key, { sub: key, qAtual: 0, qAnterior: 0, valTotal: 0, skus: [] });
+            }
+            const s = subMap.get(key);
+            s.qAtual    += item.qAtual;
+            s.qAnterior += item.qAnterior;
+            s.valTotal  += item.valTotal;
+            s.skus.push(item);
+        });
+
+        const subsecoes = [...subMap.values()].map(s => {
+            const diff = s.qAtual - s.qAnterior;
+            const perc = s.qAnterior > 0 ? (diff / s.qAnterior) * 100 : (s.qAtual > 0 ? 100 : 0);
+            // Ordenar SKUs internos por contribuição de variação absoluta
+            s.skus.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+            s.topGrowth  = s.skus.filter(x => x.diff > 0).slice(0, 5);
+            s.topDecline = s.skus.filter(x => x.diff < 0).slice(0, 5);
+            return { ...s, diff: parseFloat(diff.toFixed(1)), perc: parseFloat(perc.toFixed(1)) };
+        }).sort((a, b) => Math.abs(b.perc) - Math.abs(a.perc));
+
+        // ── 6. DUELO DE MARCAS ───────────────────────────────────────
+        //
+        // Estratégia: para cada par de SKUs com descrição similar mas marcas
+        // diferentes dentro da mesma subseção, agrupa por "produto base"
+        // (descrição sem a marca) e cria duelos marca-a-marca.
+        //
+        // "produto base" = texto breve sem os tokens que são marcas
+        const _baseProduto = (txt, marcaDetectada) => {
+            return txt.toUpperCase()
+                .replace(/[^A-Z0-9\s]/g, ' ')
+                .split(/\s+/)
+                .filter(t => t !== marcaDetectada && t.length >= 2)
+                .join(' ')
+                .trim() || txt.toUpperCase().substring(0, 20);
+        };
+
+        // Agrupa por (subseção, produto_base) → { marca → { qAtual, qAnterior } }
+        const dueloMap = new Map();
+        lista.forEach(item => {
+            if (!item.txt || item.marca === 'N/ID') return;
+            const base = _baseProduto(item.txt, item.marca);
+            if (base.length < 5) return; // base muito curta = ruído
+            const key  = `${item.sub}||${base}`;
+            if (!dueloMap.has(key)) dueloMap.set(key, { base, sub: item.sub, marcas: new Map() });
+            const d = dueloMap.get(key);
+            if (!d.marcas.has(item.marca)) {
+                d.marcas.set(item.marca, { marca: item.marca, qAtual: 0, qAnterior: 0, skus: [] });
+            }
+            const m = d.marcas.get(item.marca);
+            m.qAtual    += item.qAtual;
+            m.qAnterior += item.qAnterior;
+            m.skus.push(item.id);
+        });
+
+        // Filtra apenas grupos com 2+ marcas (duelos reais) e volume relevante
+        const marcas = [...dueloMap.values()]
+            .filter(d => d.marcas.size >= 2)
+            .map(d => {
+                const lista_ = [...d.marcas.values()]
+                    .map(m => {
+                        const diff = m.qAtual - m.qAnterior;
+                        const perc = m.qAnterior > 0 ? (diff / m.qAnterior) * 100 : (m.qAtual > 0 ? 100 : 0);
+                        return { ...m, diff: parseFloat(diff.toFixed(1)), perc: parseFloat(perc.toFixed(1)) };
+                    })
+                    .sort((a, b) => b.qAtual - a.qAtual);
+
+                const totalVol = lista_.reduce((s, m) => s + m.qAtual, 0);
+                return { base: d.base, sub: d.sub, marcas: lista_, totalVol };
+            })
+            .filter(d => d.totalVol > 0)
+            .sort((a, b) => b.totalVol - a.totalVol)
+            .slice(0, 30); // máx 30 duelos no ranking
+
+        // ── 7. SALVA NO STATE ────────────────────────────────────────
+        APP.rankings.bi = {
+            skus:      skusSorted,
+            subsecoes,
+            marcas,
+            isMock:    !temDadosReais,
+        };
 
         EventBus.emit('bi:atualizado', { temDadosReais });
     },
