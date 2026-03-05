@@ -125,6 +125,210 @@ const Actions = {
         APP.view('dash');
     },
 
+    filtrarMarcas: debounce((v) => {
+        APP.ui.buscaMarcas = v;
+        APP.view('dash');
+    }, 280),
+
+    setFiltroMarcaSub(sub) {
+        APP.ui.filtroMarcaSub = sub;
+        APP.view('dash');
+    },
+
+    // ── MODAL DETALHES DE MARCA ───────────────────────────────────
+    // Abre modal com gráficos SVG e KPIs para um duelo específico.
+    // dueloIdx é o índice no array filtrado atual da view — por isso
+    // recalculamos com os mesmos filtros para garantir consistência.
+    abrirDetalhesMarca(dueloIdxFiltrado, subFiltro, buscaRaw) {
+        const bi     = APP.rankings.bi;
+        const todos  = bi?.marcas ?? [];
+        const skuIdx = bi?.skuParaDuelo ?? new Map();
+
+        // Recalcula filtro igual à view
+        const busca = String(buscaRaw ?? '').trim().toUpperCase();
+        const sub   = String(subFiltro ?? '');
+        let duelos   = todos;
+
+        if (busca.length >= 3) {
+            const idxPorSku = [];
+            skuIdx.forEach((indices, skuId) => {
+                if (skuId.toUpperCase().includes(busca)) indices.forEach(i => idxPorSku.push(i));
+            });
+            if (idxPorSku.length) {
+                duelos = [...new Set(idxPorSku)].map(i => todos[i]).filter(Boolean);
+            } else {
+                duelos = todos.filter(d =>
+                    d.base.toUpperCase().includes(busca) ||
+                    d.marcas.some(m => m.marca.toUpperCase().includes(busca))
+                );
+            }
+        }
+        if (sub) duelos = duelos.filter(d => d.sub === sub);
+
+        const d = duelos[dueloIdxFiltrado];
+        if (!d) return;
+
+        const overlay = document.getElementById('modal-overlay');
+        if (!overlay) return;
+
+        const esc_ = s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const CORES = ['#FF8C00','#3B82F6','#8B5CF6','#EC4899','#10B981','#F59E0B'];
+        const total  = d.totalVol || 1;
+        const up     = d.totalPerc >= 0;
+        const corTot = up ? '#10B981' : '#EF4444';
+
+        // ── GRÁFICO DE BARRAS HORIZONTAIS (share de volume) ─────────
+        const maxQ = Math.max(...d.marcas.map(m => m.qAtual), 1);
+        const barrasHTML = d.marcas.map((m, i) => {
+            const cor     = CORES[i] ?? '#666';
+            const pct     = Math.round((m.qAtual / maxQ) * 100);
+            const share   = Math.round((m.qAtual / total) * 100);
+            const up_m    = m.diff > 0;
+            const corVar  = up_m ? '#10B981' : m.diff < 0 ? '#EF4444' : '#6B7280';
+            return `
+            <div style="margin-bottom:12px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                    <div style="display:flex;align-items:center;gap:6px">
+                        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${cor};flex-shrink:0"></span>
+                        <span style="font-size:11px;font-weight:800;color:#F3F4F6">${esc_(m.marca)}</span>
+                        ${i===0?'<span style="font-size:8px;padding:1px 5px;border-radius:10px;background:rgba(255,140,0,.15);color:#FF8C00;font-weight:700">LÍDER</span>':''}
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <span style="font-size:10px;font-weight:700;font-family:'JetBrains Mono',monospace;color:${cor}">${share}%</span>
+                        <span style="font-size:10px;font-weight:700;color:${corVar}">${m.diff>0?'+':''}${esc_(String(m.diff))} un</span>
+                    </div>
+                </div>
+                <div style="height:8px;border-radius:4px;background:#1A1D2E;overflow:hidden">
+                    <div style="height:100%;width:${pct}%;background:${cor};border-radius:4px;transition:width .6s ease"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-top:3px">
+                    <span style="font-size:9px;color:#6B7280">${m.qAtual} un atual · ${Math.round(m.qAnterior)} un ant.</span>
+                    <span style="font-size:9px;color:${corVar};font-weight:700">${m.perc>0?'+':''}${esc_(String(m.perc))}% vs período ant.</span>
+                </div>
+            </div>`;
+        }).join('');
+
+        // ── GRÁFICO RADAR / PIZZA (share em SVG) ────────────────────
+        // Mini donut SVG mostrando share de mercado
+        const R = 42, CX = 54, CY = 54, espessura = 16;
+        const circunf = 2 * Math.PI * R;
+        let acumAngle = -Math.PI / 2; // começa no topo
+        const fatias = d.marcas.slice(0,4).map((m, i) => {
+            const angulo = (m.qAtual / total) * 2 * Math.PI;
+            const x1 = CX + R * Math.cos(acumAngle);
+            const y1 = CY + R * Math.sin(acumAngle);
+            acumAngle += angulo;
+            const x2 = CX + R * Math.cos(acumAngle);
+            const y2 = CY + R * Math.sin(acumAngle);
+            const large = angulo > Math.PI ? 1 : 0;
+            const cor   = CORES[i] ?? '#555';
+            // SVG arc path para anel
+            const r_inner = R - espessura;
+            const xi1 = CX + r_inner * Math.cos(acumAngle - angulo);
+            const yi1 = CY + r_inner * Math.sin(acumAngle - angulo);
+            const xi2 = CX + r_inner * Math.cos(acumAngle);
+            const yi2 = CY + r_inner * Math.sin(acumAngle);
+            if (angulo < 0.01) return '';
+            return `<path d="M${x1.toFixed(1)},${y1.toFixed(1)} A${R},${R} 0 ${large},1 ${x2.toFixed(1)},${y2.toFixed(1)} L${xi2.toFixed(1)},${yi2.toFixed(1)} A${r_inner},${r_inner} 0 ${large},0 ${xi1.toFixed(1)},${yi1.toFixed(1)} Z" fill="${cor}" opacity="0.92"/>`;
+        }).join('');
+
+        const donutSVG = `
+        <svg viewBox="0 0 108 108" width="108" height="108" style="flex-shrink:0">
+            <circle cx="${CX}" cy="${CY}" r="${R}" fill="#111320" stroke="#1A1D2E" stroke-width="1"/>
+            ${fatias}
+            <circle cx="${CX}" cy="${CY}" r="${R - espessura - 1}" fill="#111320"/>
+            <text x="${CX}" y="${CY - 5}" text-anchor="middle" fill="#9CA3AF" font-size="7" font-family="Inter,sans-serif">TOTAL</text>
+            <text x="${CX}" y="${CY + 7}" text-anchor="middle" fill="#F3F4F6" font-size="10" font-weight="700" font-family="'JetBrains Mono',monospace">${d.totalVol}</text>
+            <text x="${CX}" y="${CY + 18}" text-anchor="middle" fill="${corTot}" font-size="8" font-weight="700" font-family="'JetBrains Mono',monospace">${up?'+':''}${esc_(String(d.totalPerc))}%</text>
+        </svg>`;
+
+        // ── LEGENDA DO DONUT ─────────────────────────────────────────
+        const legendaHTML = d.marcas.slice(0,4).map((m,i) => {
+            const share = Math.round((m.qAtual/total)*100);
+            const cor   = CORES[i] ?? '#555';
+            return `<div style="display:flex;align-items:center;gap:5px;margin-bottom:4px">
+                <span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${cor};flex-shrink:0"></span>
+                <span style="font-size:10px;color:#D1D5DB;font-weight:700">${esc_(m.marca)}</span>
+                <span style="font-size:10px;color:#6B7280;margin-left:auto">${share}%</span>
+            </div>`;
+        }).join('');
+
+        // ── SKUs de cada marca ───────────────────────────────────────
+        const skusHTML = d.marcas.slice(0,4).map((m, i) => {
+            const cor = CORES[i] ?? '#555';
+            if (!m.skus?.length) return '';
+            return `<div style="margin-bottom:10px">
+                <div style="font-size:10px;font-weight:800;color:${cor};margin-bottom:5px">${esc_(m.marca)}</div>
+                <div style="display:flex;flex-wrap:wrap;gap:4px">
+                    ${(m.skuItems ?? []).slice(0,8).map(sk => {
+                        const up_k = sk.diff > 0;
+                        const ck   = up_k ? '#10B981' : sk.diff < 0 ? '#EF4444' : '#6B7280';
+                        return `<div style="padding:4px 8px;border-radius:5px;background:#0D0F18;border:1px solid #1A1D2E;min-width:0">
+                            <div style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;color:#F3F4F6">${esc_(sk.id)}</div>
+                            <div style="font-size:8px;color:#6B7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:90px">${esc_((sk.desc??'').substring(0,18))}</div>
+                            <div style="font-size:8px;color:${ck};font-weight:700;margin-top:1px">${sk.diff>0?'+':''}${esc_(String(sk.diff))} un</div>
+                        </div>`;
+                    }).join('')}
+                    ${(m.skuItems?.length??0) > 8 ? `<div style="padding:4px 8px;border-radius:5px;background:#0D0F18;border:1px solid #1A1D2E;font-size:9px;color:#6B7280;display:flex;align-items:center">+${m.skuItems.length-8} SKUs</div>` : ''}
+                </div>
+            </div>`;
+        }).join('');
+
+        overlay.innerHTML = `
+        <div class="modal-box" style="max-width:460px;width:100%;max-height:90vh;overflow-y:auto;padding:0;background:#111320;border:1px solid #232642">
+
+            <!-- Header -->
+            <div style="padding:16px 18px 14px;border-bottom:1px solid #1A1D2E;position:sticky;top:0;background:#111320;z-index:1">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                    <div style="flex:1;min-width:0">
+                        <div style="font-size:9px;font-weight:800;color:#6B7280;letter-spacing:1.5px;margin-bottom:4px">DUELO DE MARCAS</div>
+                        <div style="font-size:13px;font-weight:900;color:#F3F4F6;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc_(d.base.substring(0,40))}</div>
+                        <div style="font-size:10px;color:#6B7280;margin-top:3px">${esc_(d.sub)}</div>
+                    </div>
+                    <button onclick="document.getElementById('modal-overlay').classList.remove('active')"
+                        style="flex-shrink:0;background:none;border:none;color:#6B7280;font-size:20px;cursor:pointer;padding:2px 4px;line-height:1;margin-left:8px">✕</button>
+                </div>
+
+                <!-- KPIs do duelo -->
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px">
+                    ${[
+                        ['VOLUME ATUAL', d.totalVol + ' un', '#F3F4F6'],
+                        ['VARIAÇÃO', (up?'+':'') + d.totalPerc + '%', corTot],
+                        ['MARCAS', d.marcas.length + ' marcas', '#A78BFA'],
+                    ].map(([lbl, val, cor]) => `
+                    <div style="padding:8px 10px;border-radius:7px;background:#0D0F18;border:1px solid #1A1D2E">
+                        <div style="font-size:8px;font-weight:800;color:#6B7280;letter-spacing:.8px;margin-bottom:3px">${lbl}</div>
+                        <div style="font-size:13px;font-weight:900;font-family:'JetBrains Mono',monospace;color:${cor}">${val}</div>
+                    </div>`).join('')}
+                </div>
+            </div>
+
+            <!-- Donut + legenda -->
+            <div style="padding:16px 18px;border-bottom:1px solid #1A1D2E">
+                <div style="font-size:9px;font-weight:800;color:#6B7280;letter-spacing:1px;margin-bottom:12px">SHARE DE MERCADO</div>
+                <div style="display:flex;gap:16px;align-items:center">
+                    ${donutSVG}
+                    <div style="flex:1">${legendaHTML}</div>
+                </div>
+            </div>
+
+            <!-- Barras de performance -->
+            <div style="padding:16px 18px;border-bottom:1px solid #1A1D2E">
+                <div style="font-size:9px;font-weight:800;color:#6B7280;letter-spacing:1px;margin-bottom:12px">PERFORMANCE POR MARCA</div>
+                ${barrasHTML}
+            </div>
+
+            <!-- SKUs detalhados -->
+            <div style="padding:16px 18px">
+                <div style="font-size:9px;font-weight:800;color:#6B7280;letter-spacing:1px;margin-bottom:12px">SKUs ENVOLVIDOS</div>
+                ${skusHTML || '<div style="font-size:11px;color:#6B7280">Sem SKUs detalhados</div>'}
+            </div>
+        </div>`;
+
+        overlay.classList.add('active');
+        overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.remove('active'); };
+    },
+
     abrirSubsecao(subNome) {
         const bi  = APP.rankings.bi;
         const sub = bi?.subsecoes?.find(s => s.sub === subNome);

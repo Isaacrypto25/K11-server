@@ -414,29 +414,160 @@ const Views = {
 
                         <!-- ABA MARCAS -->
                         ${(APP.ui.biTab ?? 'sku') === 'marcas' ? (() => {
-                            const duelos = APP.rankings.bi?.marcas ?? [];
-                            if (!duelos.length) return `<div class="pad-15 centered micro-txt txt-muted">Sem duelos de marca detectados</div>`;
-                            return `<div style="padding:12px 15px;display:flex;flex-direction:column;gap:10px">
-                                ${duelos.slice(0,15).map(d => {
-                                    const total = d.totalVol || 1;
-                                    return `<div style="padding:11px 12px;border-radius:8px;background:var(--bg);border:1px solid var(--border)">
-                                        <div style="font-size:10px;font-weight:800;color:var(--text-muted);letter-spacing:.8px;margin-bottom:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.base.substring(0,40))}</div>
-                                        <div style="display:flex;flex-direction:column;gap:5px">
-                                            ${d.marcas.slice(0,4).map((m,i) => {
-                                                const share = Math.round((m.qAtual/total)*100);
-                                                const up    = m.diff > 0;
-                                                const cor   = up?'var(--success)':m.diff<0?'var(--danger)':'var(--text-muted)';
-                                                const lider = i === 0;
-                                                return `<div style="display:grid;grid-template-columns:70px 1fr 52px;gap:6px;align-items:center">
-                                                    <div style="font-size:10px;font-weight:${lider?800:600};color:${lider?'var(--primary)':'var(--text-soft)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lider?'👑 ':''}${esc(m.marca)}</div>
-                                                    <div style="height:5px;border-radius:3px;background:var(--border);overflow:hidden"><div style="width:${share}%;height:100%;background:${lider?'var(--primary)':'var(--border-bright)'};border-radius:3px"></div></div>
-                                                    <div style="text-align:right"><span style="font-size:10px;font-weight:700;font-family:var(--font-mono)">${share}%</span><span style="font-size:9px;color:${cor};margin-left:3px">${m.diff>0?'+':''}${esc(String(m.diff))}</span></div>
-                                                </div>`;
-                                            }).join('')}
-                                        </div>
-                                        <div style="margin-top:6px;font-size:8px;color:var(--text-muted)">${esc(d.sub)} · ${d.totalVol} un total</div>
-                                    </div>`;
-                                }).join('')}
+                            const bi     = APP.rankings.bi;
+                            const todos  = bi?.marcas ?? [];
+                            const skuIdx = bi?.skuParaDuelo ?? new Map();
+
+                            // ── Subseções disponíveis para filtro ──────────────
+                            const subsDisponiveis = [...new Set(todos.map(d => d.sub))].sort();
+
+                            // ── Filtros ativos ─────────────────────────────────
+                            const buscaRaw = (APP.ui.buscaMarcas ?? '').trim().toUpperCase();
+                            const subFiltro = APP.ui.filtroMarcaSub ?? '';
+
+                            // ── Resolve busca por SKU ──────────────────────────
+                            // Se o usuário digitou um SKU, encontra os duelos que o contêm
+                            let duelos = todos;
+                            let skuResolvido = null;
+
+                            if (buscaRaw.length >= 3) {
+                                // Tenta primeiro: é um SKU exato ou parcial?
+                                const idxPorSku = [];
+                                skuIdx.forEach((indices, skuId) => {
+                                    if (skuId.toUpperCase().includes(buscaRaw)) {
+                                        indices.forEach(i => idxPorSku.push(i));
+                                    }
+                                });
+
+                                if (idxPorSku.length) {
+                                    // Busca por SKU encontrou duelos — mostra esses
+                                    const uniq = [...new Set(idxPorSku)];
+                                    duelos = uniq.map(i => todos[i]).filter(Boolean);
+                                    // Destaca o SKU buscado dentro dos duelos
+                                    skuResolvido = buscaRaw;
+                                } else {
+                                    // Busca por texto livre na base do produto ou marca
+                                    duelos = todos.filter(d =>
+                                        d.base.toUpperCase().includes(buscaRaw) ||
+                                        d.marcas.some(m => m.marca.toUpperCase().includes(buscaRaw))
+                                    );
+                                }
+                            }
+
+                            // Aplica filtro de subseção
+                            if (subFiltro) {
+                                duelos = duelos.filter(d => d.sub === subFiltro);
+                            }
+
+                            const semResultado = !duelos.length;
+
+                            return `<div>
+                                <!-- Controles de busca e filtro -->
+                                <div style="padding:10px 15px 0;display:flex;flex-direction:column;gap:8px">
+
+                                    <!-- Busca: SKU, produto ou marca -->
+                                    <div style="position:relative">
+                                        <input
+                                            type="text"
+                                            placeholder="BUSCAR SKU, PRODUTO OU MARCA..."
+                                            class="op-input"
+                                            style="width:100%;padding-left:32px;font-size:11px"
+                                            oninput="APP.actions.filtrarMarcas(this.value)"
+                                            value="${esc(APP.ui.buscaMarcas ?? '')}">
+                                        <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:14px;color:var(--text-muted);pointer-events:none">🔍</span>
+                                    </div>
+
+                                    <!-- Filtro de subseção -->
+                                    <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none">
+                                        <button onclick="APP.actions.setFiltroMarcaSub('')"
+                                            style="flex-shrink:0;padding:4px 10px;border-radius:20px;border:1px solid ${!subFiltro?'var(--primary)':'var(--border)'};background:${!subFiltro?'rgba(255,140,0,.12)':'transparent'};color:${!subFiltro?'var(--primary)':'var(--text-muted)'};font-size:9px;font-weight:700;letter-spacing:.5px;cursor:pointer;white-space:nowrap">
+                                            TODAS
+                                        </button>
+                                        ${subsDisponiveis.slice(0,12).map(s => `
+                                        <button onclick="APP.actions.setFiltroMarcaSub('${esc(s.replace(/'/g,"\\'"))}')"
+                                            style="flex-shrink:0;padding:4px 10px;border-radius:20px;border:1px solid ${subFiltro===s?'var(--primary)':'var(--border)'};background:${subFiltro===s?'rgba(255,140,0,.12)':'transparent'};color:${subFiltro===s?'var(--primary)':'var(--text-muted)'};font-size:9px;font-weight:700;letter-spacing:.5px;cursor:pointer;white-space:nowrap">
+                                            ${esc(s.length>18?s.substring(0,16)+'…':s)}
+                                        </button>`).join('')}
+                                    </div>
+
+                                    ${skuResolvido ? `
+                                    <div style="padding:6px 10px;border-radius:6px;background:rgba(255,140,0,.08);border:1px solid rgba(255,140,0,.2);font-size:10px;color:var(--primary)">
+                                        SKU <b>${esc(skuResolvido)}</b> encontrado em ${duelos.length} duelo${duelos.length!==1?'s':''}
+                                    </div>` : ''}
+                                </div>
+
+                                <!-- Lista de duelos -->
+                                <div style="padding:10px 15px 14px;display:flex;flex-direction:column;gap:10px;max-height:60vh;overflow-y:auto">
+                                    ${semResultado
+                                        ? `<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:11px">
+                                            ${buscaRaw||subFiltro ? 'Nenhum duelo encontrado para este filtro' : 'Sem duelos detectados nos dados atuais'}
+                                           </div>`
+                                        : duelos.slice(0, 20).map((d, di) => {
+                                            const total   = d.totalVol || 1;
+                                            const up      = d.totalPerc >= 0;
+                                            const corTot  = up ? 'var(--success)' : 'var(--danger)';
+                                            const CORES   = ['var(--primary)','#3B82F6','#8B5CF6','#EC4899'];
+
+                                            return `<div style="padding:12px;border-radius:8px;background:var(--bg);border:1px solid var(--border)">
+
+                                                <!-- Cabeçalho do duelo -->
+                                                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:9px">
+                                                    <div style="flex:1;min-width:0">
+                                                        <div style="font-size:10px;font-weight:800;color:var(--text-muted);letter-spacing:.6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.base.substring(0,42))}</div>
+                                                        <div style="font-size:9px;color:var(--text-muted);margin-top:2px">${esc(d.sub)} · ${d.totalVol} un</div>
+                                                    </div>
+                                                    <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+                                                        <span style="font-size:11px;font-weight:800;font-family:var(--font-mono);color:${corTot}">${up?'+':''}${esc(String(d.totalPerc))}%</span>
+                                                        <button onclick="APP.actions.abrirDetalhesMarca(${di}, '${subFiltro}', '${buscaRaw}')"
+                                                            style="padding:4px 8px;border-radius:5px;border:1px solid var(--border-mid);background:var(--card-bg2);color:var(--text-soft);font-size:9px;font-weight:700;letter-spacing:.5px;cursor:pointer;transition:all .15s;white-space:nowrap"
+                                                            onmouseenter="this.style.borderColor='var(--primary)';this.style.color='var(--primary)'"
+                                                            onmouseleave="this.style.borderColor='var(--border-mid)';this.style.color='var(--text-soft)'">
+                                                            DETALHES
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <!-- Barras das marcas -->
+                                                <div style="display:flex;flex-direction:column;gap:6px">
+                                                    ${d.marcas.slice(0,4).map((m, mi) => {
+                                                        const share   = Math.round((m.qAtual / total) * 100);
+                                                        const up_m    = m.diff > 0;
+                                                        const corVar  = up_m ? 'var(--success)' : m.diff < 0 ? 'var(--danger)' : 'var(--text-muted)';
+                                                        const corBarra= CORES[mi] ?? 'var(--border-bright)';
+                                                        // Destaca se algum SKU desta marca bate com a busca
+                                                        const temSku  = skuResolvido && m.skus.some(s => s.toUpperCase().includes(skuResolvido));
+                                                        return `<div style="display:grid;grid-template-columns:72px 1fr 56px;gap:6px;align-items:center;${temSku?'background:rgba(255,140,0,.06);border-radius:4px;padding:2px 4px':''}">
+                                                            <div style="font-size:10px;font-weight:700;color:${corBarra};white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(m.skus.join(', '))}">
+                                                                ${mi===0?'👑 ':''}${esc(m.marca)}
+                                                                ${temSku?'<span style="font-size:7px;color:var(--primary)"> ●</span>':''}
+                                                            </div>
+                                                            <div style="position:relative;height:6px;border-radius:3px;background:var(--border);overflow:hidden">
+                                                                <div style="position:absolute;left:0;top:0;height:100%;width:${share}%;background:${corBarra};border-radius:3px;transition:width .5s ease"></div>
+                                                            </div>
+                                                            <div style="display:flex;justify-content:space-between;align-items:center">
+                                                                <span style="font-size:10px;font-weight:700;font-family:var(--font-mono)">${share}%</span>
+                                                                <span style="font-size:9px;color:${corVar};margin-left:2px">${m.diff>0?'+':''}${esc(String(m.diff))}</span>
+                                                            </div>
+                                                        </div>`;
+                                                    }).join('')}
+                                                </div>
+
+                                                <!-- SKUs desta marca (expandido quando há busca ativa) -->
+                                                ${skuResolvido ? `
+                                                <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+                                                    ${d.marcas.slice(0,4).map(m => {
+                                                        const skusBatidos = m.skus.filter(s => s.toUpperCase().includes(skuResolvido));
+                                                        if (!skusBatidos.length) return '';
+                                                        return `<div style="font-size:9px;color:var(--text-muted)">
+                                                            <span style="color:var(--primary);font-weight:700">${esc(m.marca)}</span>: ${skusBatidos.map(s=>`<span class="mono" style="color:var(--text-soft)">${esc(s)}</span>`).join(', ')}
+                                                        </div>`;
+                                                    }).join('')}
+                                                </div>` : ''}
+                                            </div>`;
+                                        }).join('')
+                                    }
+                                    ${duelos.length > 20 ? `<div style="text-align:center;font-size:10px;color:var(--text-muted);padding:8px 0">... e mais ${duelos.length-20} duelos. Refine a busca para ver mais.</div>` : ''}
+                                </div>
                             </div>`;
                         })() : ''}
 

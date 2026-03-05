@@ -58,6 +58,8 @@ const APP = {
         skuMatrixAberta: true,
         skuTab:          'drag',
         biTab:           'sku',
+        buscaMarcas:     '',
+        filtroMarcaSub:  '',
         _acoesState:     [],
         _rafIds:         {},
 
