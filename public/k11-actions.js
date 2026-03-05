@@ -137,6 +137,89 @@ const Actions = {
 
     // ── MODAL DETALHES DE MARCA ───────────────────────────────────
     // Abre modal com gráficos SVG e KPIs para um duelo específico.
+    /**
+     * Gera HTML para comparação lado-a-lado de SKUs comparáveis
+     * Agrupa SKUs por normalização para mostrar "mesmo produto em diferentes marcas"
+     */
+    _gerarComparacaoSkuHTML(duelo, CORES, esc_) {
+        if (!duelo?.skusNormalizados || duelo.skusNormalizados.size === 0) return '';
+
+        const grupos = [...duelo.skusNormalizados.entries()]
+            .filter(([_, items]) => items.length >= 2)  // apenas com 2+ marcas
+            .map(([nome, items]) => ({
+                nome,
+                items: items.sort((a, b) => b.qAtual - a.qAtual),
+                total: items.reduce((s, i) => s + i.qAtual, 0)
+            }))
+            .sort((a, b) => b.total - a.total)
+            .slice(0, 4);  // top 4 comparações
+
+        if (grupos.length === 0) return '';
+
+        return `
+        <div style="padding:16px 18px;border-top:1px solid #1A1D2E">
+            <div style="font-size:9px;font-weight:800;color:#A78BFA;letter-spacing:1px;margin-bottom:14px">
+                🔄 PRODUTOS COMPARÁVEIS
+            </div>
+            
+            ${grupos.map(comp => {
+                return `
+                <div style="margin-bottom:16px;padding:12px;border-radius:8px;background:#0D0F18;border:1px solid #1A1D2E">
+                    <!-- Nome do produto normalizado -->
+                    <div style="font-size:9px;font-weight:700;color:#D1D5DB;margin-bottom:10px;letter-spacing:0.5px;text-transform:uppercase">
+                        ${esc_(comp.nome)}
+                    </div>
+                    
+                    <!-- Grid de comparação lado-a-lado -->
+                    <div style="display:grid;grid-template-columns:repeat(${Math.min(comp.items.length, 4)}, 1fr);gap:8px;margin-bottom:10px">
+                        ${comp.items.slice(0, 4).map((item, idx) => {
+                            const pct = Math.round((item.qAtual / comp.total) * 100);
+                            const cor = CORES[idx % CORES.length];
+                            const diff = item.qAtual - item.qAnterior;
+                            const corDiff = diff > 0 ? '#10B981' : diff < 0 ? '#EF4444' : '#6B7280';
+                            const up = diff >= 0 ? '+' : '';
+                            
+                            return `
+                            <div style="padding:10px;border-radius:6px;background:#111320;border:1px solid ${cor}44;text-align:center">
+                                <!-- Marca -->
+                                <div style="font-size:8px;font-weight:900;color:${cor};margin-bottom:6px;letter-spacing:0.5px">
+                                    ${esc_(item.marca.substring(0, 12).toUpperCase())}
+                                </div>
+                                
+                                <!-- Quantidade -->
+                                <div style="font-size:13px;font-weight:900;color:#F3F4F6;font-family:'JetBrains Mono',monospace;margin-bottom:2px">
+                                    ${item.qAtual}
+                                </div>
+                                <div style="font-size:8px;color:#6B7280">
+                                    ${pct}% total
+                                </div>
+                                
+                                <!-- Variação -->
+                                <div style="font-size:8px;color:${corDiff};font-weight:700;margin-top:4px">
+                                    ${up}${diff} un
+                                </div>
+                            </div>
+                            `;
+                        }).join('')}
+                    </div>
+                    
+                    <!-- SKU IDs específicos -->
+                    <div style="border-top:1px solid #1A1D2E;padding-top:8px">
+                        ${comp.items.slice(0, 4).map((item, idx) => `
+                        <div style="font-size:8px;color:#6B7280;margin-bottom:4px;display:flex;align-items:center;gap:4px">
+                            <span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:${CORES[idx % CORES.length]}"></span>
+                            <b style="color:#D1D5DB">${esc_(item.marca)}</b>
+                            <span style="font-family:'JetBrains Mono',monospace;color:#9CA3AF">${esc_(item.skuId)}</span>
+                        </div>
+                        `).join('')}
+                    </div>
+                </div>
+                `;
+            }).join('')}
+        </div>
+        `;
+    },
+
     // dueloIdx é o índice no array filtrado atual da view — por isso
     // recalculamos com os mesmos filtros para garantir consistência.
     abrirDetalhesMarca(dueloIdxFiltrado, subFiltro, buscaRaw) {
@@ -323,6 +406,9 @@ const Actions = {
                 <div style="font-size:9px;font-weight:800;color:#6B7280;letter-spacing:1px;margin-bottom:12px">SKUs ENVOLVIDOS</div>
                 ${skusHTML || '<div style="font-size:11px;color:#6B7280">Sem SKUs detalhados</div>'}
             </div>
+
+            <!-- PRODUTOS COMPARÁVEIS (NOVO) -->
+            ${_gerarComparacaoSkuHTML(d, CORES, esc_) || ''}
         </div>`;
 
         overlay.classList.add('active');
