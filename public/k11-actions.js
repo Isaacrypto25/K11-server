@@ -123,11 +123,15 @@ const Actions = {
     
     // ── NOVO: COMPARAÇÃO TEMPORAL (Atual vs Anterior) ─────────────────
     
+    // ── NOVO: MOSTRAR MODAL DE SELE
     // ── NOVO: MOSTRAR MODAL DE SELEÇÃO DE MARCAS PARA COMPARAÇÃO ─────
     showComparacaoModal(dueloIdx) {
         const bi = APP.rankings.bi;
         const duelo = bi?.marcas?.[dueloIdx];
-        if (!duelo) return;
+        if (!duelo || !duelo.marcas || duelo.marcas.length < 2) {
+            alert('Este produto não tem 2 marcas para comparar');
+            return;
+        }
 
         const overlay = document.getElementById('modal-overlay');
         if (!overlay) return;
@@ -144,15 +148,15 @@ const Actions = {
             <div style="font-size:11px;color:var(--text-muted);margin-bottom:16px">${esc_(duelo.base)}</div>
 
             <div style="margin-bottom:16px">
-                <label style="display:block;font-size:10px;color:var(--text-muted);margin-bottom:4px">MARCA 1</label>
-                <select id="marca1-select" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:11px">
+                <label style="display:block;font-size:10px;color:var(--text-muted);margin-bottom:4px;font-weight:700">MARCA 1</label>
+                <select id="marca1-select" style="width:100%;padding:10px;border:1px solid var(--primary);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;font-weight:700;cursor:pointer">
                     ${duelo.marcas.map((m, idx) => `<option value="${idx}">${esc_(m.marca)}</option>`).join('')}
                 </select>
             </div>
 
-            <div style="margin-bottom:16px">
-                <label style="display:block;font-size:10px;color:var(--text-muted);margin-bottom:4px">MARCA 2</label>
-                <select id="marca2-select" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:11px">
+            <div style="margin-bottom:20px">
+                <label style="display:block;font-size:10px;color:var(--text-muted);margin-bottom:4px;font-weight:700">MARCA 2</label>
+                <select id="marca2-select" style="width:100%;padding:10px;border:1px solid var(--primary);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;font-weight:700;cursor:pointer">
                     ${duelo.marcas.map((m, idx) => `<option value="${idx}" ${idx === 1 ? 'selected' : ''}>${esc_(m.marca)}</option>`).join('')}
                 </select>
             </div>
@@ -160,9 +164,19 @@ const Actions = {
             <button onclick="(() => {
                 const m1 = parseInt(document.getElementById('marca1-select').value);
                 const m2 = parseInt(document.getElementById('marca2-select').value);
-                if (m1 === m2) { alert('Selecione marcas diferentes'); return; }
+                if (m1 === m2) { alert('Selecione marcas DIFERENTES'); return; }
                 document.getElementById('modal-overlay').classList.remove('active');
                 setTimeout(() => APP.actions.abrirComparacaoTemporal(${dueloIdx}, m1, m2), 200);
+            })()"
+                style="width:100%;padding:12px;background:var(--primary);color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:12px;transition:all .2s">
+                🔄 COMPARAR MARCAS
+            </button>
+        </div>`;
+
+        overlay.classList.add('active');
+        overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.remove('active'); };
+    },
+ m1, m2), 200);
             })()"
                 style="width:100%;padding:10px;background:var(--primary);color:white;border:none;border-radius:4px;font-weight:700;cursor:pointer;font-size:11px">
                 🔄 COMPARAR
