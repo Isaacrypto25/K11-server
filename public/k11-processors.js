@@ -326,6 +326,57 @@ const Processors = {
             return { ...s, diff: parseFloat(diff.toFixed(1)), perc: parseFloat(perc.toFixed(1)) };
         }).sort((a,b) => Math.abs(b.perc) - Math.abs(a.perc));
 
+        // ── ANÁLISE COMPARATIVA (Atual vs Anterior) ──────────────────
+        const _analisarComparacao = (marca1Atual, marca1Anterior, marca2Atual, marca2Anterior) => {
+            const m1_atual = safeFloat(marca1Atual.qAtual || 0);
+            const m1_anterior = safeFloat(marca1Anterior.qAnterior || 0);
+            const m2_atual = safeFloat(marca2Atual.qAtual || 0);
+            const m2_anterior = safeFloat(marca2Anterior.qAnterior || 0);
+            
+            const diff_m1 = m1_atual - m1_anterior;
+            const diff_m2 = m2_atual - m2_anterior;
+            const perc_m1 = m1_anterior > 0 ? (diff_m1 / m1_anterior * 100).toFixed(1) : '0';
+            const perc_m2 = m2_anterior > 0 ? (diff_m2 / m2_anterior * 100).toFixed(1) : '0';
+            
+            const trend_m1 = diff_m1 > 0 ? '↗ Crescendo' : diff_m1 < 0 ? '↘ Caindo' : '→ Estável';
+            const trend_m2 = diff_m2 > 0 ? '↗ Crescendo' : diff_m2 < 0 ? '↘ Caindo' : '→ Estável';
+            
+            const status_m1 = diff_m1 > 0 ? 'GANHANDO' : diff_m1 < 0 ? 'PERDENDO' : 'ESTÁVEL';
+            const status_m2 = diff_m2 > 0 ? 'GANHANDO' : diff_m2 < 0 ? 'PERDENDO' : 'ESTÁVEL';
+            
+            return {
+                marca1: marca1Atual.marca,
+                marca2: marca2Atual.marca,
+                atual: {
+                    m1: Math.round(m1_atual),
+                    m2: Math.round(m2_atual),
+                    diff: Math.round(m1_atual - m2_atual),
+                    melhor: m1_atual > m2_atual ? '👑 ' + marca1Atual.marca : m2_atual > m1_atual ? '👑 ' + marca2Atual.marca : 'EMPATADO'
+                },
+                anterior: {
+                    m1: Math.round(m1_anterior),
+                    m2: Math.round(m2_anterior),
+                    diff: Math.round(m1_anterior - m2_anterior),
+                    melhor: m1_anterior > m2_anterior ? '👑 ' + marca1Atual.marca : m2_anterior > m1_anterior ? '👑 ' + marca2Atual.marca : 'EMPATADO'
+                },
+                variacao: {
+                    m1_abs: Math.round(diff_m1),
+                    m1_perc: perc_m1,
+                    m2_abs: Math.round(diff_m2),
+                    m2_perc: perc_m2,
+                    vencedor: Math.abs(diff_m1) > Math.abs(diff_m2) ? marca1Atual.marca : marca2Atual.marca
+                },
+                trend: {
+                    m1: trend_m1,
+                    m2: trend_m2
+                },
+                status: {
+                    m1: status_m1,
+                    m2: status_m2
+                }
+            };
+        };
+
         // ── 7. DUELO DE MARCAS (Jaccard matching) ───────────────────
         //
         // Pré-agrupamento por chave de triagem → depois valida com Jaccard.
@@ -444,9 +495,9 @@ const Processors = {
             skus:        skusSorted,
             subsecoes,
             marcas,
-            skuParaDuelo,
+            skuParaDuelo,   // Map(skuId → [índices em marcas[]])
             isMock:      !temDadosReais,
-            analisarComparacao: _analisarComparacao
+            analisarComparacao: _analisarComparacao,
         };
 
         EventBus.emit('bi:atualizado', { temDadosReais });
