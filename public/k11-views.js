@@ -503,25 +503,14 @@ const Views = {
                                             ${buscaRaw||subFiltro ? 'Nenhum duelo encontrado para este filtro' : 'Sem duelos detectados nos dados atuais'}
                                            </div>`
                                         : duelos.slice(0, 20).map((d, di) => {
-                                            const total      = d.totalVol || 1;
-                                            const up         = d.totalPerc >= 0;
-                                            const corTot     = up ? 'var(--success)' : 'var(--danger)';
-                                            const CORES      = ['var(--primary)','#3B82F6','#8B5CF6','#EC4899'];
-                                            const realIdx    = todos.indexOf(d); // índice real no array completo
+                                            const total   = d.totalVol || 1;
+                                            const up      = d.totalPerc >= 0;
+                                            const corTot  = up ? 'var(--success)' : 'var(--danger)';
+                                            const CORES   = ['var(--primary)','#3B82F6','#8B5CF6','#EC4899'];
 
-                                            return `<div style="padding:12px;border-radius:8px;background:var(--bg);border:1px solid var(--border);cursor:pointer;transition:all .3s;border-left:3px solid var(--primary)"
-                                                         onclick="(() => {
-                                                            const marcaIdx = parseInt(this.dataset.marcaIdx || '0');
-                                                            const nextIdx = (marcaIdx + 1) % this.dataset.totalMarcas;
-                                                            this.dataset.marcaIdx = nextIdx;
-                                                            this.style.opacity = '0.7';
-                                                            setTimeout(() => { this.style.opacity = '1'; }, 100);
-                                                         }).call(this)"
-                                                         data-duelo-idx="${di}"
-                                                         data-marca-idx="0"
-                                                         data-total-marcas="${d.marcas.length}">
+                                            return `<div style="padding:12px;border-radius:8px;background:var(--bg);border:1px solid var(--border)">
 
-                                                <!-- Cabeçalho do duelo + navegação -->
+                                                <!-- Cabeçalho do duelo -->
                                                 <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:9px">
                                                     <div style="flex:1;min-width:0">
                                                         <div style="font-size:10px;font-weight:800;color:var(--text-muted);letter-spacing:.6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.base.substring(0,42))}</div>
@@ -529,13 +518,13 @@ const Views = {
                                                     </div>
                                                     <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
                                                         <span style="font-size:11px;font-weight:800;font-family:var(--font-mono);color:${corTot}">${up?'+':''}${esc(String(d.totalPerc))}%</span>
-                                                        <button onclick="event.stopPropagation();APP.actions.abrirDetalhesMarca(${di}, '${subFiltro}', '${buscaRaw}')"
+                                                        <button onclick="APP.actions.abrirDetalhesMarca(${di}, '${subFiltro}', '${buscaRaw}')"
                                                             style="padding:4px 8px;border-radius:5px;border:1px solid var(--border-mid);background:var(--card-bg2);color:var(--text-soft);font-size:9px;font-weight:700;letter-spacing:.5px;cursor:pointer;transition:all .15s;white-space:nowrap"
                                                             onmouseenter="this.style.borderColor='var(--primary)';this.style.color='var(--primary)'"
                                                             onmouseleave="this.style.borderColor='var(--border-mid)';this.style.color='var(--text-soft)'">
                                                             DETALHES
                                                         </button>
-                                                        <button onclick="event.stopPropagation();APP.actions.showComparacaoModal(${realIdx})"
+                                                        <button onclick="APP.actions.showComparacaoModal(${di})"
                                                             style="padding:4px 8px;border-radius:5px;border:1px solid #3B82F6;background:rgba(59,130,246,.1);color:#3B82F6;font-size:9px;font-weight:700;letter-spacing:.5px;cursor:pointer;margin-left:4px;white-space:nowrap">
                                                             📊 COMPARAR
                                                         </button>
@@ -543,15 +532,8 @@ const Views = {
                                                 </div>
 
                                                 <!-- Barras das marcas -->
-                                                <!-- Indicadores de transição -->
-                                                <div style="margin-bottom:8px;display:flex;gap:3px;justify-content:center">
-                                                    ${d.marcas.map((_, idx) => `<div style="width:6px;height:6px;border-radius:50%;background:var(--primary);opacity:${idx === 0 ? '1' : '0.3'};transition:opacity .3s" data-indicator="${idx}"></div>`).join('')}
-                                                </div>
-                                                
                                                 <div style="display:flex;flex-direction:column;gap:6px">
-                                                    ${(() => {
-                                                        const marcaIdx = 0; // Sempre mostra primeira marca (será atualizada por JS)
-                                                        return d.marcas.slice(marcaIdx, marcaIdx + 1).map((m, mi) => {
+                                                    ${d.marcas.slice(0,4).map((m, mi) => {
                                                         const share   = Math.round((m.qAtual / total) * 100);
                                                         const up_m    = m.diff > 0;
                                                         const corVar  = up_m ? 'var(--success)' : m.diff < 0 ? 'var(--danger)' : 'var(--text-muted)';
@@ -571,7 +553,7 @@ const Views = {
                                                                 <span style="font-size:9px;color:${corVar};margin-left:2px">${m.diff>0?'+':''}${esc(String(m.diff))}</span>
                                                             </div>
                                                         </div>`;
-                                                    }).join('') })()}
+                                                    }).join('')}
                                                 </div>
 
                                                 <!-- SKUs desta marca (expandido quando há busca ativa) -->
