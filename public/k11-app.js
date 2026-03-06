@@ -37,7 +37,6 @@ const APP = {
         growth:       [],
         decline:      [],
         duelos:       [],
-        bi:           { skus: [], subsecoes: [], marcas: [], isMock: true },
         pieStats:     { red: 0, yellow: 0, green: 0, total: 1 },
         benchmarking: { hidraulica: 0, mesquita: 0, jacarepagua: 0, benfica: 0, loja: 0 },
         topLeverage:  { desc: 'N/A', vMinha: 0 },
@@ -57,7 +56,6 @@ const APP = {
         buscaDuelo:      '',
         skuMatrixAberta: true,
         skuTab:          'drag',
-        biTab:           'sku',
         _acoesState:     [],
         _rafIds:         {},
 
