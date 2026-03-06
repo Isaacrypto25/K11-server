@@ -457,7 +457,7 @@ const APP = {
     processarDueloAqua()        { Processors.processarDueloAqua();             },
     processarBI_DualTrend()     { Processors.processarBI_DualTrend();          },
     processarUCGlobal_DPA()     { Processors.processarUCGlobal_DPA();          },
-    _gerarAcoesPrioritarias()   { return Processors.gerarAcoesPrioritarias();  },
+    _gerarAcoesPrioritarias()   { return Processors._gerarAcoesPrioritarias(); },
     _detectarInconsistencias()  { Processors.detectarInconsistencias();        },
 
     views:   Views,
