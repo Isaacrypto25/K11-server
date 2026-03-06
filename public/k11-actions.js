@@ -99,11 +99,28 @@ const Actions = {
             `${i+1}. SKU ${t.id} — ${t.desc.substring(0,30)} | QTD: ${t.qtdSolicitada}un`
         );
         const texto = `FILA K11 OMNI — ${new Date().toLocaleString('pt-BR')}\n${'─'.repeat(50)}\n${linhas.join('\n')}`;
-        navigator.clipboard?.writeText(texto).then(() => {
-            APP.ui.toast('Fila copiada para clipboard!', 'success');
-        }).catch(() => {
-            APP.ui.toast('Erro ao copiar. Navegador não suporta.', 'danger');
-        });
+        if (navigator.clipboard?.writeText) {
+            navigator.clipboard.writeText(texto).then(() => {
+                APP.ui.toast('Fila copiada para clipboard!', 'success');
+            }).catch(() => {
+                APP.ui.toast('Erro ao copiar.', 'danger');
+            });
+        } else {
+            // Fallback para ambientes sem HTTPS / clipboard API
+            const ta = document.createElement('textarea');
+            ta.value = texto;
+            ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            try {
+                document.execCommand('copy');
+                APP.ui.toast('Fila copiada para clipboard!', 'success');
+            } catch {
+                APP.ui.toast('Navegador não suporta clipboard. Copie manualmente.', 'danger');
+            } finally {
+                document.body.removeChild(ta);
+            }
+        }
     },
 
     toggleTask(id) {
@@ -129,7 +146,7 @@ const Actions = {
         const bi = APP.rankings.bi;
         const duelo = bi?.marcas?.[dueloIdx];
         if (!duelo || !duelo.marcas || duelo.marcas.length < 2) {
-            alert('Este produto não tem 2 marcas para comparar');
+            APP.ui?.toast?.('Este produto não tem 2 marcas para comparar', 'danger') ?? alert('Este produto não tem 2 marcas para comparar');
             return;
         }
 
@@ -164,22 +181,12 @@ const Actions = {
             <button onclick="(() => {
                 const m1 = parseInt(document.getElementById('marca1-select').value);
                 const m2 = parseInt(document.getElementById('marca2-select').value);
-                if (m1 === m2) { alert('Selecione marcas DIFERENTES'); return; }
+                if (m1 === m2) { APP.ui?.toast?.('Selecione marcas DIFERENTES', 'danger') ?? alert('Selecione marcas DIFERENTES'); return; }
                 document.getElementById('modal-overlay').classList.remove('active');
                 setTimeout(() => APP.actions.abrirComparacaoTemporal(${dueloIdx}, m1, m2), 200);
             })()"
                 style="width:100%;padding:12px;background:var(--primary);color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:12px;transition:all .2s">
                 🔄 COMPARAR MARCAS
-            </button>
-        </div>`;
-
-        overlay.classList.add('active');
-        overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.remove('active'); };
-    },
- m1, m2), 200);
-            })()"
-                style="width:100%;padding:10px;background:var(--primary);color:white;border:none;border-radius:4px;font-weight:700;cursor:pointer;font-size:11px">
-                🔄 COMPARAR
             </button>
         </div>`;
 

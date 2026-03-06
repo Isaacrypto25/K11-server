@@ -23,7 +23,10 @@ const Processors = {
      *   LOG         → logística/trânsito
      */
     processarEstoque(data) {
-        if (!Array.isArray(data) || data.length === 0) return;
+        if (!Array.isArray(data) || data.length === 0) {
+            console.warn('[K11] processarEstoque: dados ausentes ou vazios.');
+            return;
+        }
         const mapa = new Map();
 
         data.forEach(p => {
@@ -591,15 +594,19 @@ const Processors = {
      * Gera lista de ações prioritárias combinando gargalos UC, rupturas e gaps de venda.
      * @returns {Array} Lista de até 6 ações com urgência e estado done/pendente
      */
-    gerarAcoesPrioritarias() {
+    _gerarAcoesPrioritarias() {
         const acoes = [];
 
         APP.db.ucGlobal.slice(0, 2).forEach(g => {
+            const disponivelDPA = g.ael + g.res;
+            const acao_uc = g.pkl === 0
+                ? (g.ael > 0 ? 'BAIXAR DO AÉREO' : 'TRAZER DA RESERVA')
+                : 'COMPLETAR PKL';
             acoes.push({
                 urgencia: 'alta',
                 desc: `Liberar fluxo: ${g.desc.substring(0, 32)}`,
-                meta: `${g.id} · ${g.diasParado < 999 ? g.diasParado + 'd parado' : 'S/MOV'} no DPA`,
-                val: `${g.qtdDPA} un`,
+                meta: `${g.id} · ${acao_uc} · PKL: ${g.pkl}un`,
+                val: `${disponivelDPA} un`,
                 id: `dpa-${g.id}`,
             });
         });
@@ -663,5 +670,6 @@ const Processors = {
                 APP.rankings.meta.inconsistentes.map(p => p.id)
             );
         }
+        EventBus.emit('inconsistencias:atualizadas');
     },
 };

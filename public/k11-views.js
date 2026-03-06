@@ -609,7 +609,8 @@ const Views = {
         },
 
         detalheCriticos(corAlvo) {
-            const cor = corAlvo ?? 'yellow';
+            const CORES_VALIDAS = ['yellow', 'red', 'green'];
+            const cor = CORES_VALIDAS.includes(corAlvo) ? corAlvo : 'yellow';
             const titulos     = { yellow: 'ZONA CRÍTICA (PKL 1–2 UNIDADES)', red: 'RUPTURAS (ZERADO TOTAL + FALSO ZERO)', green: 'ESTOQUE SAUDÁVEL' };
             const coresBorder = { yellow: 'border-warning', red: 'border-danger', green: 'border-success' };
             const lista = APP.db.produtos.filter(p => p.categoriaCor === cor).sort((a, b) => b.scoreCriticidade - a.scoreCriticidade);
@@ -983,7 +984,7 @@ const Views = {
         },
 
         recebimento() {
-            const lista = APP.db.agendamentos;
+            const lista = APP.db.agendamentos ?? [];
             const COR_STATUS   = { red: 'var(--danger)', yellow: 'var(--warning)', green: 'var(--success)', 'sem-estoque': 'var(--text-muted)' };
             const LABEL_STATUS = { red: 'RUPTURA', yellow: 'PKL CRÍTICO', green: 'SAUDÁVEL', 'sem-estoque': 'SEM ESTOQUE' };
 
