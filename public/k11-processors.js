@@ -259,6 +259,14 @@ const Processors = {
         const _baseTokens = (txt, marca) =>
             new Set(_tok(txt).filter(t => t !== marca));
 
+        // Tokens para chave de agrupamento: inclui técnicos (DN40, PN16...) para
+        // garantir que calibres diferentes nunca sejam agrupados no mesmo duelo
+        const _tokFull = (txt) =>
+            txt.toUpperCase().replace(/[^A-Z0-9\s]/g,' ').split(/\s+/)
+               .filter(t => t.length >= 2 && !STOP.has(t));
+        const _baseTokensKey = (txt, marca) =>
+            new Set(_tokFull(txt).filter(t => t !== marca));
+
         const _jaccard = (setA, setB) => {
             if (!setA.size && !setB.size) return 1;
             let inter = 0;
@@ -397,11 +405,14 @@ const Processors = {
 
         lista.forEach(item => {
             if (!item.txt || item.marca === 'N/ID') return;
-            const tokSet = _baseTokens(item.txt, item.marca);
-            if (tokSet.size < 2) return; // base mínima de 2 tokens descritivos
-            const chave = _triagem(tokSet, item.marca, item.sub);
+            // tokSetKey: inclui DN40/PN16 etc. para separar calibres na chave de agrupamento
+            const tokSetKey = _baseTokensKey(item.txt, item.marca);
+            // tokSet: sem técnicos, usado só para Jaccard semântico dentro do grupo
+            const tokSet    = _baseTokens(item.txt, item.marca);
+            if (tokSetKey.size < 2) return; // base mínima de 2 tokens
+            const chave = _triagem(tokSetKey, item.marca, item.sub);
             if (!triageMap.has(chave)) triageMap.set(chave, []);
-            triageMap.get(chave).push({ item, tokSet });
+            triageMap.get(chave).push({ item, tokSet, tokSetKey });
         });
 
         // Para cada grupo de triagem, agrupa por sub+base usando Jaccard
@@ -414,8 +425,9 @@ const Processors = {
             entries.forEach(entry => {
                 let fundido = false;
                 for (const g of grupos) {
-                    // Compara com o representante (primeiro item do grupo)
-                    if (_jaccard(g[0].tokSet, entry.tokSet) >= 0.60) {
+                    // Compara usando tokSetKey (inclui calibres): Jaccard precisa ser
+                    // alto mesmo com DN40 vs DN100 para rejeitar falsos positivos
+                    if (_jaccard(g[0].tokSetKey, entry.tokSetKey) >= 0.70) {
                         g.push(entry);
                         fundido = true;
                         break;
@@ -434,7 +446,7 @@ const Processors = {
                     .reduce((a,b) => a.length <= b.length ? a : b); // menor = mais genérica
 
                 const sub  = rep.item.sub;
-                const key  = `${sub}||${[...rep.tokSet].sort().join('+')}`;
+                const key  = `${sub}||${[...rep.tokSetKey].sort().join('+')}`;
 
                 if (!dueloMap.has(key)) {
                     dueloMap.set(key, { base: baseLabel, sub, marcaMap: new Map() });
@@ -500,12 +512,20 @@ const Processors = {
         });
 
         // ── 9. SALVA NO STATE ────────────────────────────────────────
+        // Top subseções crescendo e caindo (para exibição no Growth/Decline da aba SKU)
+        const topGrowthSubs  = [...subsecoes].filter(s => s.diff > 0)
+            .sort((a,b) => b.perc - a.perc).slice(0, 5);
+        const topDeclineSubs = [...subsecoes].filter(s => s.diff < 0)
+            .sort((a,b) => a.perc - b.perc).slice(0, 5);
+
         APP.rankings.bi = {
-            skus:        skusSorted,
+            skus:           skusSorted,
             subsecoes,
             marcas,
             skuParaDuelo,   // Map(skuId → [índices em marcas[]])
-            isMock:      !temDadosReais,
+            topGrowthSubs,
+            topDeclineSubs,
+            isMock:         !temDadosReais,
             analisarComparacao: _analisarComparacao,
         };
 
