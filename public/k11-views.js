@@ -503,10 +503,11 @@ const Views = {
                                             ${buscaRaw||subFiltro ? 'Nenhum duelo encontrado para este filtro' : 'Sem duelos detectados nos dados atuais'}
                                            </div>`
                                         : duelos.slice(0, 20).map((d, di) => {
-                                            const total   = d.totalVol || 1;
-                                            const up      = d.totalPerc >= 0;
-                                            const corTot  = up ? 'var(--success)' : 'var(--danger)';
-                                            const CORES   = ['var(--primary)','#3B82F6','#8B5CF6','#EC4899'];
+                                            const total      = d.totalVol || 1;
+                                            const up         = d.totalPerc >= 0;
+                                            const corTot     = up ? 'var(--success)' : 'var(--danger)';
+                                            const CORES      = ['var(--primary)','#3B82F6','#8B5CF6','#EC4899'];
+                                            const realIdx    = todos.indexOf(d); // índice real no array completo
 
                                             return `<div style="padding:12px;border-radius:8px;background:var(--bg);border:1px solid var(--border);cursor:pointer;transition:all .3s;border-left:3px solid var(--primary)"
                                                          onclick="(() => {
@@ -534,7 +535,7 @@ const Views = {
                                                             onmouseleave="this.style.borderColor='var(--border-mid)';this.style.color='var(--text-soft)'">
                                                             DETALHES
                                                         </button>
-                                                        <button onclick="APP.actions.showComparacaoModal(${di})"
+                                                        <button onclick="event.stopPropagation();APP.actions.showComparacaoModal(${realIdx})"
                                                             style="padding:4px 8px;border-radius:5px;border:1px solid #3B82F6;background:rgba(59,130,246,.1);color:#3B82F6;font-size:9px;font-weight:700;letter-spacing:.5px;cursor:pointer;margin-left:4px;white-space:nowrap">
                                                             📊 COMPARAR
                                                         </button>
