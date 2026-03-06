@@ -217,10 +217,13 @@ const Processors = {
             'HIDRAULICA','HIDRO','AGUA','NIVEL','CARGA','SUCAO','RECALQUE',
         ]);
 
+        // Padrões técnicos de calibre/classe que nunca são marcas: DN40, DN100, PN16, SN4, SN8, SDR11, JE6, JEI4
+        const TECH_PATTERN = /^(DN|PN|SDR|SN|JEI?|BSP|NPT|CV|HP|HZ|VAC|RPM)\d+$/;
+
         const tokenFreq = new Map();
         const _tok = (txt) =>
             txt.toUpperCase().replace(/[^A-Z0-9\s]/g,' ').split(/\s+/)
-               .filter(t => t.length >= 3 && !/^\d+$/.test(t) && !STOP.has(t));
+               .filter(t => t.length >= 3 && !/^\d+$/.test(t) && !STOP.has(t) && !TECH_PATTERN.test(t));
 
         mapAtual.forEach(({ txt }) => {
             if (!txt) return;
@@ -264,13 +267,16 @@ const Processors = {
         };
 
         // Chave de triagem: 2 tokens mais frequentes (maiores freq = mais descritivos do produto)
-        const _triagem = (tokens, marca) => {
-            return [...tokens]
+        const _triagem = (tokens, marca, sub) => {
+            const base = [...tokens]
                 .filter(t => t !== marca)
                 .sort((a, b) => (tokenFreq.get(b) ?? 0) - (tokenFreq.get(a) ?? 0))
                 .slice(0, 2)
                 .sort()           // ordem alfa p/ chave determinística
                 .join('|');
+            // Inclui sub (subcategoria/família) na chave para evitar
+            // agrupar produtos de famílias diferentes (ex: DN40 vs DN100)
+            return `${sub || ''}::${base}`;
         };
 
         // ── 4. MONTAR LISTA FLAT ─────────────────────────────────────
@@ -393,7 +399,7 @@ const Processors = {
             if (!item.txt || item.marca === 'N/ID') return;
             const tokSet = _baseTokens(item.txt, item.marca);
             if (tokSet.size < 2) return; // base mínima de 2 tokens descritivos
-            const chave = _triagem(tokSet, item.marca);
+            const chave = _triagem(tokSet, item.marca, item.sub);
             if (!triageMap.has(chave)) triageMap.set(chave, []);
             triageMap.get(chave).push({ item, tokSet });
         });
