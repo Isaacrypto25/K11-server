@@ -1,8 +1,13 @@
 /**
- * K11 OMNI ELITE — PROCESSADORES DE DADOS
- * ════════════════════════════════════════
- * Transforma os JSONs brutos em estruturas otimizadas para as views.
+ * K11 OMNI ELITE — PROCESSADORES DE DADOS v4.0
+ * ════════════════════════════════════════════════
+ * Transforma JSONs brutos em estruturas otimizadas para as views.
  * Cada processador popula APP.db e APP.rankings, emitindo eventos via EventBus.
+ *
+ * v4.0 — Novidades:
+ *   • processarEstoque: calcula mediaVendaDia, diasCobertura, dataRupturaEstimada
+ *   • processarBI_DualTrend: Cross-Brand Intelligence (marcasGlobal + compararMarcas())
+ *   • topRupturaProxima: top 10 SKUs com cobertura ≤ 7 dias
  *
  * Depende de: k11-config.js, k11-utils.js
  */
@@ -11,16 +16,23 @@
 
 const Processors = {
 
+    // ══════════════════════════════════════════════════════════════════
+    // ESTOQUE — classifica SKUs + projeção de ruptura por cobertura
+    // ══════════════════════════════════════════════════════════════════
+
     /**
      * Processa produtos.json → APP.db.produtos + APP.rankings.pieStats
-     * Classifica cada SKU em: ruptura (red), abastecimento (yellow) ou saudável (green).
      *
      * Regras de tipo de depósito:
      *   CAB* / CHI* → tratados como PKL (piso de venda com nomenclatura diferente)
      *   PKL         → piso de picking
-     *   AEL         → aéreo (endereço elevado)
+     *   AEL         → aéreo
      *   RES         → reserva
-     *   LOG         → logística/trânsito
+     *
+     * Campos novos por SKU (v4):
+     *   mediaVendaDia        → média ponderada de vendas/dia (atual 60% + anterior 40%)
+     *   diasCobertura        → PKL / mediaVendaDia  (null se mediaVenda = 0)
+     *   dataRupturaEstimada  → data formatada BR se cobertura ≤ 30d (null caso contrário)
      */
     processarEstoque(data) {
         if (!Array.isArray(data) || data.length === 0) {
@@ -34,7 +46,11 @@ const Processors = {
             if (!sku) return;
 
             if (!mapa.has(sku)) {
-                mapa.set(sku, { id: sku, desc: p['Descrição produto'] ?? 'N/A', depositos: [], pkl: 0, total: 0, valTotal: 0 });
+                mapa.set(sku, {
+                    id: sku,
+                    desc: p['Descrição produto'] ?? 'N/A',
+                    depositos: [], pkl: 0, total: 0, valTotal: 0,
+                });
             }
 
             const entry   = mapa.get(sku);
@@ -51,13 +67,54 @@ const Processors = {
             entry.valTotal += safeFloat(p['Valor total']);
         });
 
+        // Calcula médias de venda por SKU (ponderação: atual 60% + anterior 40% ÷ 30 dias)
+        const mediaVendasMap = Processors._calcularMediaVendas();
+
         let valRed = 0, valYellow = 0;
+
         APP.db.produtos = [...mapa.values()].map(p => {
-            if      (p.total <= 0) { p.categoriaCor = 'red';    p.status = 'ruptura';       p.subStatus = 'zero-total';  valRed    += p.valTotal; }
-            else if (p.pkl   <= 0) { p.categoriaCor = 'red';    p.status = 'ruptura';       p.subStatus = 'falso-zero';  valRed    += p.valTotal; }
-            else if (p.pkl   <= 2) { p.categoriaCor = 'yellow'; p.status = 'abastecimento'; p.subStatus = 'pkl-critico'; valYellow += p.valTotal; }
-            else                   { p.categoriaCor = 'green';  p.status = 'saudavel';      p.subStatus = 'ok'; }
-            p.scoreCriticidade = p.valTotal * (p.categoriaCor === 'red' ? 3 : p.categoriaCor === 'yellow' ? 1.5 : 0);
+            const mediaVenda = mediaVendasMap.get(p.id) ?? 0;
+
+            // ── Projeção de cobertura ───────────────────────────────
+            p.mediaVendaDia = parseFloat(mediaVenda.toFixed(2));
+            p.diasCobertura = mediaVenda > 0
+                ? parseFloat((p.pkl / mediaVenda).toFixed(1))
+                : null;
+
+            if (p.diasCobertura !== null && p.diasCobertura <= 30) {
+                const dr = new Date();
+                dr.setDate(dr.getDate() + Math.floor(p.diasCobertura));
+                p.dataRupturaEstimada = dr.toLocaleDateString('pt-BR', {
+                    day: '2-digit', month: '2-digit',
+                });
+            } else {
+                p.dataRupturaEstimada = null;
+            }
+
+            // ── Classificação de status ────────────────────────────
+            if (p.total <= 0) {
+                p.categoriaCor = 'red';    p.status = 'ruptura';       p.subStatus = 'zero-total';
+                valRed += p.valTotal;
+            } else if (p.pkl <= 0) {
+                p.categoriaCor = 'red';    p.status = 'ruptura';       p.subStatus = 'falso-zero';
+                valRed += p.valTotal;
+            } else if (p.pkl <= 2 || (p.diasCobertura !== null && p.diasCobertura <= 3)) {
+                p.categoriaCor = 'yellow'; p.status = 'abastecimento'; p.subStatus = 'pkl-critico';
+                valYellow += p.valTotal;
+            } else if (p.diasCobertura !== null && p.diasCobertura <= 7) {
+                p.categoriaCor = 'yellow'; p.status = 'abastecimento'; p.subStatus = 'ruptura-proxima';
+                valYellow += p.valTotal;
+            } else {
+                p.categoriaCor = 'green';  p.status = 'saudavel';      p.subStatus = 'ok';
+            }
+
+            // ── Score de criticidade ──────────────────────────────
+            const urgMult = p.categoriaCor === 'red' ? 3 : p.categoriaCor === 'yellow' ? 1.5 : 0;
+            const cobMult = (p.diasCobertura !== null && p.diasCobertura < 7)
+                ? (7 / Math.max(p.diasCobertura, 0.5))
+                : 1;
+            p.scoreCriticidade = p.valTotal * urgMult * cobMult;
+
             return p;
         });
 
@@ -72,13 +129,57 @@ const Processors = {
             total:  prods.length,
         };
 
+        // Top 10 SKUs com ruptura iminente (≤7d, PKL > 0) — usado por IA e dashboard
+        APP.rankings.topRupturaProxima = prods
+            .filter(p => p.diasCobertura !== null && p.diasCobertura > 0 && p.diasCobertura <= 7)
+            .sort((a, b) => a.diasCobertura - b.diasCobertura)
+            .slice(0, 10);
+
         EventBus.emit('estoque:atualizado');
     },
 
     /**
-     * Processa vendas PDV → duelo hidráulica vs lojas concorrentes.
-     * Popula APP.rankings.duelos, benchmarking, topLeverage.
+     * Calcula média de vendas diária por SKU.
+     * Ponderação: atual 60% + anterior 40%, dividido por 30 dias.
+     * Se só tiver um período, usa apenas ele (/ 30d).
      */
+    _calcularMediaVendas() {
+        const DIAS = 30;
+
+        const _somar = (arr) => {
+            const m = new Map();
+            (Array.isArray(arr) ? arr : []).forEach(v => {
+                const id = String(v?.['Nº do produto'] ?? v?.Produto ?? '').trim();
+                const q  = safeFloat(v?.['Quantidade vendida']);
+                if (id) m.set(id, (m.get(id) ?? 0) + q);
+            });
+            return m;
+        };
+
+        const atual    = _somar(APP.db.pdv);
+        const anterior = _somar(APP.db.pdvAnterior);
+        const todos    = new Set([...atual.keys(), ...anterior.keys()]);
+        const result   = new Map();
+
+        todos.forEach(sku => {
+            const qa = atual.get(sku)    ?? 0;
+            const qb = anterior.get(sku) ?? 0;
+            if (qa > 0 && qb > 0) {
+                result.set(sku, (qa * 0.6 + qb * 0.4) / DIAS);
+            } else if (qa > 0) {
+                result.set(sku, qa / DIAS);
+            } else if (qb > 0) {
+                result.set(sku, qb / DIAS);
+            }
+        });
+
+        return result;
+    },
+
+    // ══════════════════════════════════════════════════════════════════
+    // DUELO AQUA — benchmarking hidráulica vs concorrentes
+    // ══════════════════════════════════════════════════════════════════
+
     processarDueloAqua() {
         const KEYWORDS = new Set(['BOMBA', 'PISCINA', 'CLORO', 'FILTRO', 'MOTOBOMBA', 'VALV', 'CHAVE']);
 
@@ -122,7 +223,7 @@ const Processors = {
 
             comparativo.push({
                 id: p.id, desc: p.desc, vAlvo, vMinha, gapAbsoluto,
-                loss: parseFloat(loss.toFixed(1)),
+                loss:        parseFloat(loss.toFixed(1)),
                 dominando:   vMinha > vAlvo,
                 statusClass: loss >= 30 ? 'status-critico' : 'status-dominio',
             });
@@ -149,32 +250,25 @@ const Processors = {
         EventBus.emit('duelo:atualizado');
     },
 
+    // ══════════════════════════════════════════════════════════════════
+    // BI ENGINE v4 — Inteligência de Mercado + Cross-Brand
+    // ══════════════════════════════════════════════════════════════════
+
     /**
-     * ══════════════════════════════════════════════════════════════════
-     * BI ENGINE v3 — Inteligência de Mercado Multi-Dimensional
-     * ══════════════════════════════════════════════════════════════════
+     * Gera estruturas simultâneas a partir de pdv (atual) × pdvAnterior:
      *
-     * Gera 4 estruturas simultâneas a partir de pdv (atual) x pdvAnterior:
-     *
-     *   APP.rankings.bi.skus       → flat list por SKU
-     *   APP.rankings.bi.subsecoes  → agrupado por 'Denominação da subseção'
-     *   APP.rankings.bi.marcas     → duelos de marca com SKUs vinculados
-     *   APP.rankings.bi.skuParaMarca → Map(skuId → duelo) para busca reversa
-     *   APP.rankings.bi.isMock     → true se pdvAnterior ausente
-     *
-     * AGRUPAMENTO DE MARCA (v3):
-     *   Problema anterior: "BOMBA 1CV CLAW" e "BOMBA 1CV DANCOR" geravam
-     *   bases diferentes porque _baseProduto era sensível à posição do token.
-     *
-     *   Solução: normalizar a base em um SET de tokens ordenados
-     *   alphabetically, excluindo a marca detectada. Duas descrições são
-     *   "o mesmo produto" se seu set de tokens não-marca tem Jaccard ≥ 0.60.
-     *   Isso une "BOMBA CENTRIFUGA 1CV CLAW" e "BOMBA 1CV CENTRIFUGA DANCOR".
+     *   APP.rankings.bi.skus           → flat list por SKU
+     *   APP.rankings.bi.subsecoes      → agrupado por subseção
+     *   APP.rankings.bi.marcas         → duelos de marcas com Jaccard (igual ao v3)
+     *   APP.rankings.bi.marcasGlobal   → [NOVO v4] ranking GLOBAL de marcas (cross-brand)
+     *   APP.rankings.bi.compararMarcas → [NOVO v4] fn(nomeA, nomeB) → comparação
+     *   APP.rankings.bi.skuParaDuelo   → Map(skuId → [índices])
+     *   APP.rankings.bi.isMock         → true se pdvAnterior ausente
      */
     processarBI_DualTrend() {
         const temDadosReais = APP.db.pdvAnterior.length > 0;
         if (!temDadosReais) {
-            console.info('[K11] BI v3 em modo ESTIMADO — forneça pdvAnterior para dados reais.');
+            console.info('[K11] BI v4 em modo ESTIMADO — forneça pdvAnterior para dados reais.');
         }
 
         // ── 1. AGREGAR VENDAS ────────────────────────────────────────
@@ -217,13 +311,10 @@ const Processors = {
             'HIDRAULICA','HIDRO','AGUA','NIVEL','CARGA','SUCAO','RECALQUE',
         ]);
 
-        // Padrões técnicos de calibre/classe que nunca são marcas: DN40, DN100, PN16, SN4, SN8, SDR11, JE6, JEI4
-        const TECH_PATTERN = /^(DN|PN|SDR|SN|JEI?|BSP|NPT|CV|HP|HZ|VAC|RPM)\d+$/;
-
         const tokenFreq = new Map();
         const _tok = (txt) =>
             txt.toUpperCase().replace(/[^A-Z0-9\s]/g,' ').split(/\s+/)
-               .filter(t => t.length >= 3 && !/^\d+$/.test(t) && !STOP.has(t) && !TECH_PATTERN.test(t));
+               .filter(t => t.length >= 3 && !/^\d+$/.test(t) && !STOP.has(t));
 
         mapAtual.forEach(({ txt }) => {
             if (!txt) return;
@@ -248,24 +339,9 @@ const Processors = {
             );
         };
 
-        // ── 3. BASE CANÔNICA (set ordenado, sem marca) ───────────────
-        //
-        // Dois produtos têm a "mesma base" se seus token-sets não-marca
-        // têm similaridade Jaccard ≥ 0.60.
-        //
-        // Para performance: usamos uma chave de 3-grama de tokens ordenados
-        // como pré-agrupamento antes de calcular Jaccard.
-
+        // ── 3. BASE CANÔNICA (Jaccard) ────────────────────────────────
         const _baseTokens = (txt, marca) =>
             new Set(_tok(txt).filter(t => t !== marca));
-
-        // Tokens para chave de agrupamento: inclui técnicos (DN40, PN16...) para
-        // garantir que calibres diferentes nunca sejam agrupados no mesmo duelo
-        const _tokFull = (txt) =>
-            txt.toUpperCase().replace(/[^A-Z0-9\s]/g,' ').split(/\s+/)
-               .filter(t => t.length >= 2 && !STOP.has(t));
-        const _baseTokensKey = (txt, marca) =>
-            new Set(_tokFull(txt).filter(t => t !== marca));
 
         const _jaccard = (setA, setB) => {
             if (!setA.size && !setB.size) return 1;
@@ -274,20 +350,15 @@ const Processors = {
             return inter / (setA.size + setB.size - inter);
         };
 
-        // Chave de triagem: 2 tokens mais frequentes (maiores freq = mais descritivos do produto)
-        const _triagem = (tokens, marca, sub) => {
-            const base = [...tokens]
+        const _triagem = (tokens, marca) =>
+            [...tokens]
                 .filter(t => t !== marca)
                 .sort((a, b) => (tokenFreq.get(b) ?? 0) - (tokenFreq.get(a) ?? 0))
                 .slice(0, 2)
-                .sort()           // ordem alfa p/ chave determinística
+                .sort()
                 .join('|');
-            // Inclui sub (subcategoria/família) na chave para evitar
-            // agrupar produtos de famílias diferentes (ex: DN40 vs DN100)
-            return `${sub || ''}::${base}`;
-        };
 
-        // ── 4. MONTAR LISTA FLAT ─────────────────────────────────────
+        // ── 4. LISTA FLAT ─────────────────────────────────────────────
         const lista = [...todosSKUs].map(id => {
             const atual     = mapAtual.get(id);
             const ant       = mapAnterior?.get(id);
@@ -304,7 +375,7 @@ const Processors = {
 
             return {
                 id,
-                desc:      pInfo?.desc ?? txt.substring(0,40) ?? 'N/A',
+                desc:      pInfo?.desc ?? txt.substring(0, 40) ?? 'N/A',
                 txt,
                 sub:       sub || 'SEM SUBSEÇÃO',
                 marca,
@@ -317,16 +388,16 @@ const Processors = {
             };
         });
 
-        // ── 5. RANKINGS POR SKU ──────────────────────────────────────
-        const skusSorted = [...lista].sort((a,b) => b.perc - a.perc);
-        APP.rankings.growth  = skusSorted.slice(0,10);
-        APP.rankings.decline = [...lista].sort((a,b) => a.perc - b.perc).slice(0,10);
+        // ── 5. RANKINGS POR SKU ───────────────────────────────────────
+        const skusSorted = [...lista].sort((a, b) => b.perc - a.perc);
+        APP.rankings.growth  = skusSorted.slice(0, 10);
+        APP.rankings.decline = [...lista].sort((a, b) => a.perc - b.perc).slice(0, 10);
 
-        // ── 6. RANKING POR SUBSEÇÃO ──────────────────────────────────
+        // ── 6. RANKING POR SUBSEÇÃO ───────────────────────────────────
         const subMap = new Map();
         lista.forEach(item => {
             if (!subMap.has(item.sub)) {
-                subMap.set(item.sub, { sub: item.sub, qAtual:0, qAnterior:0, valTotal:0, skus:[] });
+                subMap.set(item.sub, { sub: item.sub, qAtual: 0, qAnterior: 0, valTotal: 0, skus: [] });
             }
             const s = subMap.get(item.sub);
             s.qAtual    += item.qAtual;
@@ -336,117 +407,83 @@ const Processors = {
         });
         const subsecoes = [...subMap.values()].map(s => {
             const diff = s.qAtual - s.qAnterior;
-            const perc = s.qAnterior > 0 ? (diff/s.qAnterior)*100 : (s.qAtual>0?100:0);
-            s.skus.sort((a,b) => Math.abs(b.diff) - Math.abs(a.diff));
-            s.topGrowth  = s.skus.filter(x=>x.diff>0).slice(0,5);
-            s.topDecline = s.skus.filter(x=>x.diff<0).slice(0,5);
+            const perc = s.qAnterior > 0 ? (diff / s.qAnterior) * 100 : (s.qAtual > 0 ? 100 : 0);
+            s.skus.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+            s.topGrowth  = s.skus.filter(x => x.diff > 0).slice(0, 5);
+            s.topDecline = s.skus.filter(x => x.diff < 0).slice(0, 5);
             return { ...s, diff: parseFloat(diff.toFixed(1)), perc: parseFloat(perc.toFixed(1)) };
-        }).sort((a,b) => Math.abs(b.perc) - Math.abs(a.perc));
+        }).sort((a, b) => Math.abs(b.perc) - Math.abs(a.perc));
 
-        // ── ANÁLISE COMPARATIVA (Atual vs Anterior) ──────────────────
-        const _analisarComparacao = (marca1Atual, marca1Anterior, marca2Atual, marca2Anterior) => {
-            const m1_atual = safeFloat(marca1Atual.qAtual || 0);
-            const m1_anterior = safeFloat(marca1Anterior.qAnterior || 0);
-            const m2_atual = safeFloat(marca2Atual.qAtual || 0);
-            const m2_anterior = safeFloat(marca2Anterior.qAnterior || 0);
-            
-            const diff_m1 = m1_atual - m1_anterior;
-            const diff_m2 = m2_atual - m2_anterior;
-            const perc_m1 = m1_anterior > 0 ? (diff_m1 / m1_anterior * 100).toFixed(1) : '0';
-            const perc_m2 = m2_anterior > 0 ? (diff_m2 / m2_anterior * 100).toFixed(1) : '0';
-            
-            const trend_m1 = diff_m1 > 0 ? '↗ Crescendo' : diff_m1 < 0 ? '↘ Caindo' : '→ Estável';
-            const trend_m2 = diff_m2 > 0 ? '↗ Crescendo' : diff_m2 < 0 ? '↘ Caindo' : '→ Estável';
-            
-            const status_m1 = diff_m1 > 0 ? 'GANHANDO' : diff_m1 < 0 ? 'PERDENDO' : 'ESTÁVEL';
-            const status_m2 = diff_m2 > 0 ? 'GANHANDO' : diff_m2 < 0 ? 'PERDENDO' : 'ESTÁVEL';
-            
-            return {
-                marca1: marca1Atual.marca,
-                marca2: marca2Atual.marca,
-                atual: {
-                    m1: Math.round(m1_atual),
-                    m2: Math.round(m2_atual),
-                    diff: Math.round(m1_atual - m2_atual),
-                    melhor: m1_atual > m2_atual ? '👑 ' + marca1Atual.marca : m2_atual > m1_atual ? '👑 ' + marca2Atual.marca : 'EMPATADO'
-                },
-                anterior: {
-                    m1: Math.round(m1_anterior),
-                    m2: Math.round(m2_anterior),
-                    diff: Math.round(m1_anterior - m2_anterior),
-                    melhor: m1_anterior > m2_anterior ? '👑 ' + marca1Atual.marca : m2_anterior > m1_anterior ? '👑 ' + marca2Atual.marca : 'EMPATADO'
-                },
-                variacao: {
-                    m1_abs: Math.round(diff_m1),
-                    m1_perc: perc_m1,
-                    m2_abs: Math.round(diff_m2),
-                    m2_perc: perc_m2,
-                    vencedor: Math.abs(diff_m1) > Math.abs(diff_m2) ? marca1Atual.marca : marca2Atual.marca
-                },
-                trend: {
-                    m1: trend_m1,
-                    m2: trend_m2
-                },
-                status: {
-                    m1: status_m1,
-                    m2: status_m2
-                }
-            };
-        };
-
-        // ── 7. DUELO DE MARCAS (Jaccard matching) ───────────────────
-        //
-        // Pré-agrupamento por chave de triagem → depois valida com Jaccard.
-        // Isso une produtos com ordem de palavras diferente mas
-        // conteúdo semanticamente igual.
-
-        // Estrutura de grupos: Map(chaveTriagem → [{ item, baseTokens }])
-        const triageMap = new Map();
-
+        // ── 7. [NOVO v4] MARKET SHARE GLOBAL POR MARCA (Cross-Brand) ─
+        // Agrega TODAS as vendas de qualquer produto por marca.
+        // Permite comparar CLAW vs DANCOR em todo o portfólio hidráulico.
+        const marcaGlobalMap = new Map();
         lista.forEach(item => {
-            if (!item.txt || item.marca === 'N/ID') return;
-            // tokSetKey: inclui DN40/PN16 etc. para separar calibres na chave de agrupamento
-            const tokSetKey = _baseTokensKey(item.txt, item.marca);
-            // tokSet: sem técnicos, usado só para Jaccard semântico dentro do grupo
-            const tokSet    = _baseTokens(item.txt, item.marca);
-            if (tokSetKey.size < 2) return; // base mínima de 2 tokens
-            const chave = _triagem(tokSetKey, item.marca, item.sub);
-            if (!triageMap.has(chave)) triageMap.set(chave, []);
-            triageMap.get(chave).push({ item, tokSet, tokSetKey });
+            if (item.marca === 'N/ID') return;
+            if (!marcaGlobalMap.has(item.marca)) {
+                marcaGlobalMap.set(item.marca, {
+                    marca: item.marca,
+                    qAtual: 0, qAnterior: 0, valTotal: 0,
+                    skuCount: 0, skus: [], subsecoes: new Set(),
+                });
+            }
+            const m = marcaGlobalMap.get(item.marca);
+            m.qAtual    += item.qAtual;
+            m.qAnterior += item.qAnterior;
+            m.valTotal  += item.valTotal;
+            m.skuCount++;
+            m.skus.push(item.id);
+            if (item.sub) m.subsecoes.add(item.sub);
         });
 
-        // Para cada grupo de triagem, agrupa por sub+base usando Jaccard
-        const dueloMap = new Map();    // key → { base, sub, marcaMap }
+        const totalVendasGlobal = lista.reduce((s, i) => s + i.qAtual, 0) || 1;
+        const marcasGlobal = [...marcaGlobalMap.values()].map(m => {
+            const diff  = m.qAtual - m.qAnterior;
+            const perc  = m.qAnterior > 0 ? (diff / m.qAnterior) * 100 : (m.qAtual > 0 ? 100 : 0);
+            const share = (m.qAtual / totalVendasGlobal) * 100;
+            return {
+                ...m,
+                subsecoes: [...m.subsecoes],
+                diff:      parseFloat(diff.toFixed(1)),
+                perc:      parseFloat(perc.toFixed(1)),
+                share:     parseFloat(share.toFixed(1)),
+                tendencia: perc > 10 ? 'acelerando' : perc < -10 ? 'desacelerando' : 'estavel',
+            };
+        }).sort((a, b) => b.qAtual - a.qAtual);
 
+        // ── 8. DUELO DE MARCAS POR PRODUTO (Jaccard matching — v3) ───
+        const triageMap = new Map();
+        lista.forEach(item => {
+            if (!item.txt || item.marca === 'N/ID') return;
+            const tokSet = _baseTokens(item.txt, item.marca);
+            if (tokSet.size < 2) return;
+            const chave = _triagem(tokSet, item.marca);
+            if (!triageMap.has(chave)) triageMap.set(chave, []);
+            triageMap.get(chave).push({ item, tokSet });
+        });
+
+        const dueloMap = new Map();
         triageMap.forEach((entries) => {
-            // Tenta fundir entradas com Jaccard ≥ 0.60 dentro do grupo
-            const grupos = [];  // cada grupo é um array de entries
-
+            const grupos = [];
             entries.forEach(entry => {
                 let fundido = false;
                 for (const g of grupos) {
-                    // Compara usando tokSetKey (inclui calibres): Jaccard precisa ser
-                    // alto mesmo com DN40 vs DN100 para rejeitar falsos positivos
-                    if (_jaccard(g[0].tokSetKey, entry.tokSetKey) >= 0.70) {
-                        g.push(entry);
-                        fundido = true;
-                        break;
+                    if (_jaccard(g[0].tokSet, entry.tokSet) >= 0.60) {
+                        g.push(entry); fundido = true; break;
                     }
                 }
                 if (!fundido) grupos.push([entry]);
             });
 
             grupos.forEach(g => {
-                // Representante: item com maior qAtual
                 const rep = g.reduce((best, e) =>
                     e.item.qAtual > best.item.qAtual ? e : best
                 );
                 const baseLabel = g
-                    .map(e => e.item.txt.toUpperCase().replace(/[^A-Z0-9\s]/g,' ').trim())
-                    .reduce((a,b) => a.length <= b.length ? a : b); // menor = mais genérica
-
-                const sub  = rep.item.sub;
-                const key  = `${sub}||${[...rep.tokSetKey].sort().join('+')}`;
+                    .map(e => e.item.txt.toUpperCase().replace(/[^A-Z0-9\s]/g, ' ').trim())
+                    .reduce((a, b) => a.length <= b.length ? a : b);
+                const sub = rep.item.sub;
+                const key = `${sub}||${[...rep.tokSet].sort().join('+')}`;
 
                 if (!dueloMap.has(key)) {
                     dueloMap.set(key, { base: baseLabel, sub, marcaMap: new Map() });
@@ -458,8 +495,7 @@ const Processors = {
                         d.marcaMap.set(item.marca, {
                             marca: item.marca,
                             qAtual: 0, qAnterior: 0,
-                            skus: [],          // IDs dos SKUs desta marca neste duelo
-                            skuItems: [],      // objetos completos para drill-down
+                            skus: [], skuItems: [],
                         });
                     }
                     const m = d.marcaMap.get(item.marca);
@@ -471,25 +507,22 @@ const Processors = {
             });
         });
 
-        // Consolida duelos, calcula métricas por marca
         const marcas = [...dueloMap.values()]
             .filter(d => d.marcaMap.size >= 2)
             .map(d => {
                 const lista_ = [...d.marcaMap.values()].map(m => {
                     const diff = m.qAtual - m.qAnterior;
-                    const perc = m.qAnterior > 0 ? (diff/m.qAnterior)*100 : (m.qAtual>0?100:0);
+                    const perc = m.qAnterior > 0 ? (diff / m.qAnterior) * 100 : (m.qAtual > 0 ? 100 : 0);
                     return { ...m, diff: parseFloat(diff.toFixed(1)), perc: parseFloat(perc.toFixed(1)) };
-                }).sort((a,b) => b.qAtual - a.qAtual);
+                }).sort((a, b) => b.qAtual - a.qAtual);
 
-                const totalVol    = lista_.reduce((s,m) => s + m.qAtual, 0);
-                const totalAnt    = lista_.reduce((s,m) => s + m.qAnterior, 0);
-                const totalDiff   = lista_.reduce((s,m) => s + m.diff, 0);
-                const totalPerc   = totalAnt > 0 ? (totalDiff/totalAnt)*100 : 0;
+                const totalVol  = lista_.reduce((s, m) => s + m.qAtual, 0);
+                const totalAnt  = lista_.reduce((s, m) => s + m.qAnterior, 0);
+                const totalDiff = lista_.reduce((s, m) => s + m.diff, 0);
+                const totalPerc = totalAnt > 0 ? (totalDiff / totalAnt) * 100 : 0;
 
                 return {
-                    base:      d.base,
-                    sub:       d.sub,
-                    marcas:    lista_,
+                    base: d.base, sub: d.sub, marcas: lista_,
                     totalVol,
                     totalAnt:  parseFloat(totalAnt.toFixed(1)),
                     totalDiff: parseFloat(totalDiff.toFixed(1)),
@@ -497,10 +530,9 @@ const Processors = {
                 };
             })
             .filter(d => d.totalVol > 0)
-            .sort((a,b) => b.totalVol - a.totalVol);
+            .sort((a, b) => b.totalVol - a.totalVol);
 
-        // ── 8. ÍNDICE REVERSO: SKU → duelo(s) ───────────────────────
-        // Permite: "busquei SKU X → qual duelo ele pertence?"
+        // ── 9. ÍNDICE REVERSO SKU → duelo(s) ─────────────────────────
         const skuParaDuelo = new Map();
         marcas.forEach((duelo, di) => {
             duelo.marcas.forEach(m => {
@@ -511,34 +543,93 @@ const Processors = {
             });
         });
 
-        // ── 9. SALVA NO STATE ────────────────────────────────────────
-        // Top subseções crescendo e caindo (para exibição no Growth/Decline da aba SKU)
-        const topGrowthSubs  = [...subsecoes].filter(s => s.diff > 0)
-            .sort((a,b) => b.perc - a.perc).slice(0, 5);
-        const topDeclineSubs = [...subsecoes].filter(s => s.diff < 0)
-            .sort((a,b) => a.perc - b.perc).slice(0, 5);
+        // ── 10. [NOVO v4] compararMarcas(nomeA, nomeB) ───────────────
+        // Compara duas marcas globalmente — independente do produto.
+        const compararMarcas = (nomeA, nomeB) => {
+            const mA = marcasGlobal.find(m => m.marca.toUpperCase() === nomeA.toUpperCase());
+            const mB = marcasGlobal.find(m => m.marca.toUpperCase() === nomeB.toUpperCase());
+            if (!mA || !mB) return null;
+            const totalAB = (mA.qAtual + mB.qAtual) || 1;
+            return {
+                marcaA: mA.marca, marcaB: mB.marca,
+                atual: {
+                    A: mA.qAtual, B: mB.qAtual,
+                    lider: mA.qAtual > mB.qAtual ? mA.marca : mB.marca,
+                },
+                anterior: {
+                    A: mA.qAnterior, B: mB.qAnterior,
+                    lider: mA.qAnterior > mB.qAnterior ? mA.marca : mB.marca,
+                },
+                shareA: parseFloat(((mA.qAtual / totalAB) * 100).toFixed(1)),
+                shareB: parseFloat(((mB.qAtual / totalAB) * 100).toFixed(1)),
+                tendenciaA: mA.tendencia, tendenciaB: mB.tendencia,
+                percA: mA.perc, percB: mB.perc,
+                skusA: mA.skuCount, skusB: mB.skuCount,
+                subsecoesA: mA.subsecoes, subsecoesB: mB.subsecoes,
+                vencedorAtual:     mA.qAtual > mB.qAtual ? mA.marca : mB.marca,
+                vencedorTendencia: mA.perc   > mB.perc   ? mA.marca : mB.marca,
+                mudouLider: (mA.qAtual > mB.qAtual) !== (mA.qAnterior > mB.qAnterior),
+            };
+        };
 
+        // ── 11. analisarComparacao (modal de marcas por produto) ─────
+        const analisarComparacao = (marca1Atual, marca1Anterior, marca2Atual, marca2Anterior) => {
+            const m1_a = safeFloat(marca1Atual.qAtual    || 0);
+            const m1_b = safeFloat(marca1Anterior.qAnterior || 0);
+            const m2_a = safeFloat(marca2Atual.qAtual    || 0);
+            const m2_b = safeFloat(marca2Anterior.qAnterior || 0);
+            const d1 = m1_a - m1_b, d2 = m2_a - m2_b;
+            const p1 = m1_b > 0 ? (d1 / m1_b * 100).toFixed(1) : '0';
+            const p2 = m2_b > 0 ? (d2 / m2_b * 100).toFixed(1) : '0';
+            return {
+                marca1: marca1Atual.marca, marca2: marca2Atual.marca,
+                atual: {
+                    m1: Math.round(m1_a), m2: Math.round(m2_a),
+                    diff: Math.round(m1_a - m2_a),
+                    melhor: m1_a > m2_a ? '👑 ' + marca1Atual.marca : m2_a > m1_a ? '👑 ' + marca2Atual.marca : 'EMPATADO',
+                },
+                anterior: {
+                    m1: Math.round(m1_b), m2: Math.round(m2_b),
+                    diff: Math.round(m1_b - m2_b),
+                    melhor: m1_b > m2_b ? '👑 ' + marca1Atual.marca : '👑 ' + marca2Atual.marca,
+                },
+                variacao: {
+                    m1_abs: Math.round(d1), m1_perc: p1,
+                    m2_abs: Math.round(d2), m2_perc: p2,
+                    vencedor: Math.abs(d1) > Math.abs(d2) ? marca1Atual.marca : marca2Atual.marca,
+                },
+                trend: {
+                    m1: d1 > 0 ? '↗ Crescendo' : d1 < 0 ? '↘ Caindo' : '→ Estável',
+                    m2: d2 > 0 ? '↗ Crescendo' : d2 < 0 ? '↘ Caindo' : '→ Estável',
+                },
+                status: {
+                    m1: d1 > 0 ? 'GANHANDO' : d1 < 0 ? 'PERDENDO' : 'ESTÁVEL',
+                    m2: d2 > 0 ? 'GANHANDO' : d2 < 0 ? 'PERDENDO' : 'ESTÁVEL',
+                },
+            };
+        };
+
+        // ── 12. SALVA NO STATE ────────────────────────────────────────
         APP.rankings.bi = {
             skus:           skusSorted,
             subsecoes,
             marcas,
-            skuParaDuelo,   // Map(skuId → [índices em marcas[]])
-            topGrowthSubs,
-            topDeclineSubs,
-            isMock:         !temDadosReais,
-            analisarComparacao: _analisarComparacao,
+            marcasGlobal,        // ← [NOVO v4] ranking global cross-brand
+            compararMarcas,      // ← [NOVO v4] fn(nomeA, nomeB) → comparação
+            skuParaDuelo,
+            analisarComparacao,  // mantido do v3 para modal de produto
+            isMock: !temDadosReais,
         };
 
         EventBus.emit('bi:atualizado', { temDadosReais });
     },
 
-    /**
-     * Identifica gargalos de UC (Unitização e Complementação):
-     * SKUs com mercadoria travada em AEL/RES mas PKL crítico (≤5 un).
-     * Score = (ael + res) × fator_urgência → ordena por impacto.
-     */
+    // ══════════════════════════════════════════════════════════════════
+    // UC GLOBAL — gargalos com AEL/RES parado e PKL baixo
+    // ══════════════════════════════════════════════════════════════════
+
     processarUCGlobal_DPA() {
-        // Constrói mapa de agendamentos por SKU a partir do fornecedor.json
+        // Constrói mapa de agendamentos por SKU
         const agendMap = new Map();
         (APP.db._rawFornecedor ?? []).forEach(f => {
             if (!f?.FIELD3 || f?.FIELD1 === 'Número Pedido' || f?.FIELD1 === 'Cliente') return;
@@ -587,17 +678,16 @@ const Processors = {
 
             if (!((ael > 0 || res > 0) && pkl <= 5)) return;
 
-            // Classificação de urgência
             let status, corStatus, scoreFator;
-            if      (prod.total <= 0)                        { status = 'RUPTURA';         corStatus = 'danger';  scoreFator = 4;   }
-            else if (pkl === 0 && ael > 0 && res === 0)      { status = 'AÉREO SEM PKL';   corStatus = 'danger';  scoreFator = 3;   }
-            else if (pkl === 0 && res > 0 && ael === 0)      { status = 'RESERVA SEM PKL'; corStatus = 'warning'; scoreFator = 3;   }
-            else if (pkl === 0 && ael > 0 && res > 0)        { status = 'AÉREO + RESERVA'; corStatus = 'danger';  scoreFator = 3.5; }
-            else if (pkl <= 2)                               { status = 'PKL CRÍTICO';     corStatus = 'danger';  scoreFator = 2;   }
-            else                                             { status = 'PKL BAIXO';       corStatus = 'warning'; scoreFator = 1;   }
+            if      (prod.total <= 0)               { status = 'RUPTURA';         corStatus = 'danger';  scoreFator = 4;   }
+            else if (pkl === 0 && ael > 0 && res === 0) { status = 'AÉREO SEM PKL';   corStatus = 'danger';  scoreFator = 3;   }
+            else if (pkl === 0 && res > 0 && ael === 0) { status = 'RESERVA SEM PKL'; corStatus = 'warning'; scoreFator = 3;   }
+            else if (pkl === 0 && ael > 0 && res > 0)   { status = 'AÉREO + RESERVA'; corStatus = 'danger';  scoreFator = 3.5; }
+            else if (pkl <= 2)                      { status = 'PKL CRÍTICO';     corStatus = 'danger';  scoreFator = 2;   }
+            else                                    { status = 'PKL BAIXO';       corStatus = 'warning'; scoreFator = 1;   }
 
-            const capMax      = getCapacidade(prod.desc);
-            const pklPct      = capMax > 0 ? Math.min(Math.round((pkl / capMax) * 100), 100) : 0;
+            const capMax       = getCapacidade(prod.desc);
+            const pklPct       = capMax > 0 ? Math.min(Math.round((pkl / capMax) * 100), 100) : 0;
             const scoreGargalo = (ael + res) * scoreFator;
 
             gargalos.push({
@@ -606,7 +696,7 @@ const Processors = {
                 pkl, ael, res, log,
                 deposPKL, deposAEL, deposRES, deposLOG,
                 capMax, pklPct,
-                valTotal: prod.valTotal,
+                valTotal:    prod.valTotal,
                 scoreGargalo,
                 agendamento: agendMap.get(prod.id) ?? null,
             });
@@ -616,15 +706,17 @@ const Processors = {
         EventBus.emit('uc:atualizado');
     },
 
-    /**
-     * Gera lista de ações prioritárias combinando gargalos UC, rupturas e gaps de venda.
-     * @returns {Array} Lista de até 6 ações com urgência e estado done/pendente
-     */
+    // ══════════════════════════════════════════════════════════════════
+    // AÇÕES PRIORITÁRIAS — plano do dia automático
+    // ══════════════════════════════════════════════════════════════════
+
     _gerarAcoesPrioritarias() {
         const acoes = [];
+        APP.ui._acoesState ??= [];
 
+        // 1. Top 2 gargalos UC
         APP.db.ucGlobal.slice(0, 2).forEach(g => {
-            const disponivelDPA = g.ael + g.res;
+            const disponivel = g.ael + g.res;
             const acao_uc = g.pkl === 0
                 ? (g.ael > 0 ? 'BAIXAR DO AÉREO' : 'TRAZER DA RESERVA')
                 : 'COMPLETAR PKL';
@@ -632,11 +724,12 @@ const Processors = {
                 urgencia: 'alta',
                 desc: `Liberar fluxo: ${g.desc.substring(0, 32)}`,
                 meta: `${g.id} · ${acao_uc} · PKL: ${g.pkl}un`,
-                val: `${disponivelDPA} un`,
-                id: `dpa-${g.id}`,
+                val:  `${disponivel} un`,
+                id:   `dpa-${g.id}`,
             });
         });
 
+        // 2. Top 2 rupturas por valor
         APP.db.produtos
             .filter(p => p.categoriaCor === 'red')
             .sort((a, b) => b.scoreCriticidade - a.scoreCriticidade)
@@ -646,39 +739,54 @@ const Processors = {
                     urgencia: 'alta',
                     desc: `Repor PKL: ${p.desc.substring(0, 32)}`,
                     meta: `${p.id} · ${p.subStatus === 'falso-zero' ? 'FALSO ZERO' : 'ZERADO'}`,
-                    val: `R$ ${brl(p.valTotal)}`,
-                    id: `rupt-${p.id}`,
+                    val:  `R$ ${brl(p.valTotal)}`,
+                    id:   `rupt-${p.id}`,
                 });
             });
 
+        // 3. Top 2 SKUs com ruptura iminente (cobertura ≤ 7d)
+        (APP.rankings.topRupturaProxima ?? []).slice(0, 2).forEach(p => {
+            acoes.push({
+                urgencia: 'media',
+                desc: `Repor antes da ruptura: ${p.desc.substring(0, 28)}`,
+                meta: `${p.id} · ~${p.diasCobertura}d (${p.dataRupturaEstimada})`,
+                val:  `${p.mediaVendaDia.toFixed(1)}/dia`,
+                id:   `cob-${p.id}`,
+            });
+        });
+
+        // 4. Top 2 gaps de PDV
         APP.rankings.duelos.slice(0, 2).forEach(d => {
             acoes.push({
                 urgencia: 'media',
                 desc: `Atacar gap: ${d.desc.substring(0, 30)}`,
                 meta: `${d.id} · -${d.gapAbsoluto}un vs ${APP.ui.pdvAlvo.toUpperCase()}`,
-                val: `-${d.loss.toFixed(0)}% efic.`,
-                id: `gap-${d.id}`,
+                val:  `-${d.loss.toFixed(0)}% efic.`,
+                id:   `gap-${d.id}`,
             });
         });
 
+        // 5. Crescimento a manter
         APP.rankings.growth.slice(0, 1).forEach(r => {
             acoes.push({
                 urgencia: 'baixa',
                 desc: `Ampliar exposição: ${r.desc.substring(0, 30)}`,
                 meta: `${r.id} · +${r.perc}% crescimento`,
-                val: `+${r.perc}%`,
-                id: `grow-${r.id}`,
+                val:  `+${r.perc}%`,
+                id:   `grow-${r.id}`,
             });
         });
 
-        APP.ui._acoesState ??= [];
-        return acoes.slice(0, 6).map(a => ({ ...a, done: APP.ui._acoesState.includes(a.id) }));
+        return acoes.slice(0, 8).map(a => ({
+            ...a,
+            done: APP.ui._acoesState.includes(a.id),
+        }));
     },
 
-    /**
-     * Detecta inconsistências: SKUs com venda registrada mas estoque zerado.
-     * Resultado salvo em APP.rankings.meta.inconsistentes.
-     */
+    // ══════════════════════════════════════════════════════════════════
+    // INCONSISTÊNCIAS — SKUs com venda mas estoque zerado
+    // ══════════════════════════════════════════════════════════════════
+
     detectarInconsistencias() {
         const vendasIds = new Set(
             APP.db.pdv
