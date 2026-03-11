@@ -1,14 +1,14 @@
 /**
- * K11 OMNI ELITE — APP CORE v4.0
+ * K11 OMNI ELITE — APP CORE (Bootstrap & Navegação)
  * ════════════════════════════════════════════════════
- * Bootstrap, navegação, autenticação JWT e estado global.
+ * v3.0 — Autenticação JWT via servidor Railway
  *
- * v4.0 — Novidades:
- *   • APP.ui.crossBrandM1 / crossBrandM2 — state para aba Cross-Brand
- *   • APP._aiAlertsCount   — badge de alertas da IA
- *   • APP._updateNavBadges — atualiza todos os badges numerais
- *   • APP.actions.setCrossBrandM1/M2 — handlers de select
- *   • SSE listener para alertas proativos da IA (k11_ai_core)
+ * Mudanças de segurança vs v2.0:
+ * - Login agora valida no SERVIDOR (não mais no frontend)
+ * - Token JWT armazenado em sessionStorage (não a senha)
+ * - K11_SERVER_TOKEN removido — todas as chamadas usam JWT
+ * - USUARIOS_VALIDOS removido do frontend
+ * - Groq key removida do frontend
  *
  * Depende de: k11-config.js, k11-utils.js, k11-ui.js,
  *             k11-processors.js, k11-views.js, k11-actions.js
@@ -34,29 +34,20 @@ const APP = {
     },
 
     rankings: {
-        growth:            [],
-        decline:           [],
-        duelos:            [],
-        topRupturaProxima: [],    // [v4] SKUs com ruptura ≤ 7d
-        bi: {
-            skus: [], subsecoes: [], marcas: [],
-            marcasGlobal: [],      // [v4] cross-brand
-            compararMarcas: null,  // [v4] fn(a,b)
-            isMock: true,
-        },
+        growth:       [],
+        decline:      [],
+        duelos:       [],
+        bi:           { skus: [], subsecoes: [], marcas: [], isMock: true },
         pieStats:     { red: 0, yellow: 0, green: 0, total: 1 },
         benchmarking: { hidraulica: 0, mesquita: 0, jacarepagua: 0, benfica: 0, loja: 0 },
         topLeverage:  { desc: 'N/A', vMinha: 0 },
         meta: {
-            lossGap:       '0.0',
-            valTotalRed:    0,
-            valTotalYellow: 0,
-            inconsistentes: [],
+            lossGap:        '0.0',
+            valTotalRed:     0,
+            valTotalYellow:  0,
+            inconsistentes:  [],
         },
     },
-
-    // Contagem de alertas não-lidos da IA (atualiza badge de nav)
-    _aiAlertsCount: 0,
 
     ui: {
         rankingAberto:   false,
@@ -69,8 +60,6 @@ const APP = {
         biTab:           'sku',
         buscaMarcas:     '',
         filtroMarcaSub:  '',
-        crossBrandM1:    '',    // [v4] marca A selecionada no cross-brand
-        crossBrandM2:    '',    // [v4] marca B selecionada no cross-brand
         _acoesState:     [],
         _rafIds:         {},
 
@@ -93,6 +82,11 @@ const APP = {
     // ── AUTENTICAÇÃO (JWT via servidor) ─────────────────────────
     auth: {
 
+        /**
+         * Login: envia RE + PIN para o servidor.
+         * O servidor valida, retorna JWT + dados do usuário.
+         * Nenhuma credencial fica no frontend.
+         */
         async login() {
             const reEl   = document.getElementById('user-re');
             const passEl = document.getElementById('user-pass');
@@ -120,6 +114,7 @@ const APP = {
                 const data = await res.json();
 
                 if (!res.ok || !data.ok) {
+                    // Credencial errada — servidor retornou erro
                     [reEl, passEl].forEach(el => {
                         el?.classList.add('shake-error');
                         setTimeout(() => el?.classList.remove('shake-error'), 500);
@@ -129,6 +124,7 @@ const APP = {
                     return;
                 }
 
+                // Salva JWT e dados do usuário (nunca o PIN)
                 K11Auth.setToken(data.token);
                 try {
                     sessionStorage.setItem('k11_user', JSON.stringify({
@@ -140,6 +136,7 @@ const APP = {
 
                 if (btn) btn.innerHTML = 'AUTENTICAR NO KERNEL';
 
+                // Redireciona conforme role
                 if (data.user.role === 'super') {
                     try { sessionStorage.setItem('k11_mode', 'ultra'); } catch {}
                     document.body.classList.add('fade-out');
@@ -159,9 +156,13 @@ const APP = {
             }
         },
 
+        /**
+         * Verifica se o JWT atual ainda é válido.
+         * Se não for, redireciona para login.
+         */
         guard() {
             if (!K11Auth.isAuthenticated()) {
-                console.warn('[K11 auth] Sessão expirada. Redirecionando...');
+                console.warn('[K11 auth] Sessão expirada ou inválida. Redirecionando...');
                 K11Auth.clearToken();
                 window.location.href = 'index.html';
                 return false;
@@ -177,6 +178,7 @@ const APP = {
 
     // ── BOOTSTRAP ────────────────────────────────────────────────
     async init() {
+        // Guard: garante que o usuário está autenticado
         if (!APP.auth.guard()) return;
 
         const st    = document.getElementById('engine-status');
@@ -185,21 +187,23 @@ const APP = {
         if (st)    st.innerHTML    = '<div class="spinner-small"></div> CONECTANDO AO SERVIDOR...';
         if (stage) stage.innerHTML = APP.views._skeleton();
 
-        APP._serverLog('info', 'FRONTEND', 'K11 OMNI v4 init() iniciado');
+        APP._serverLog('info', 'FRONTEND', 'K11 OMNI init() iniciado');
 
         try {
             const t = Date.now();
 
+            // ── Carrega tudo via /api/data/all (JWT no header) ────────
             let allData = null;
             try {
                 const res = await APP._serverFetch('/api/data/all');
                 if (res?.ok && res?.data) {
                     allData = res.data;
                     APP._serverLog('info', 'FRONTEND', 'Dados carregados via servidor', {
-                        datasets: Object.keys(allData).length,
+                        datasets: Object.keys(allData).length
                     });
                 }
             } catch (e) {
+                // Se for 401, sessão expirou
                 if (e.message?.includes('401')) {
                     APP.ui.toast('Sessão expirada. Faça login novamente.', 'danger');
                     setTimeout(() => APP.auth.logout(), 2000);
@@ -208,6 +212,7 @@ const APP = {
                 APP._serverLog('warn', 'FRONTEND', 'Servidor indisponível', { error: e.message });
             }
 
+            // ── Fallback para arquivos locais (modo offline/demo) ─────
             let p, a, m, v, vAnt, tar, vMesq, vJaca, vBenf, forn;
 
             if (allData) {
@@ -236,7 +241,7 @@ const APP = {
                 ]);
             }
 
-            // ── Fornecedor ──────────────────────────────────────
+            // ── Fornecedor ────────────────────────────────────────────
             APP.db._rawFornecedor = Array.isArray(forn) ? forn : [];
             APP.db.fornecedorMap  = new Map();
             APP.db._rawFornecedor.forEach(f => {
@@ -247,7 +252,7 @@ const APP = {
                 if (sku) APP.db.fornecedorMap.set(sku, nome || 'Fornecedor Indefinido');
             });
 
-            // ── Agendamentos ────────────────────────────────────
+            // ── Agendamentos ──────────────────────────────────────────
             const _agMap = new Map();
             APP.db._rawFornecedor.forEach(f => {
                 if (f?.FIELD1 === 'Número Pedido' || f?.FIELD1 === 'Cliente') return;
@@ -280,7 +285,7 @@ const APP = {
             });
             APP.db._agMapRaw = _agMap;
 
-            // ── Dados restantes ─────────────────────────────────
+            // ── Outros dados ──────────────────────────────────────────
             APP.db.auditoria = (Array.isArray(a) ? a : []).map((item, idx) => ({
                 id: `uc-${idx}`,
                 fornecedor: item?.cod_comprador ?? 'N/A',
@@ -291,11 +296,7 @@ const APP = {
             APP.db.movimento   = Array.isArray(m)    ? m    : Object.values(m ?? {});
             APP.db.pdv         = Array.isArray(v)    ? v    : [];
             APP.db.pdvAnterior = Array.isArray(vAnt) ? vAnt : [];
-            APP.db.pdvExtra    = {
-                mesquita:    vMesq ?? [],
-                jacarepagua: vJaca ?? [],
-                benfica:     vBenf ?? [],
-            };
+            APP.db.pdvExtra    = { mesquita: vMesq ?? [], jacarepagua: vJaca ?? [], benfica: vBenf ?? [] };
 
             APP.db.tarefas = (Array.isArray(tar) ? tar : []).map((tk, i) => ({
                 ...tk, id: tk.id ?? i, done: tk.done ?? false,
@@ -304,17 +305,17 @@ const APP = {
 
             APP._restoreFilaFromSession();
 
-            // ── Processamento ────────────────────────────────────
+            // ── Processamento ─────────────────────────────────────────
             APP.processarEstoque(p);
 
             APP.db.agendamentos = [...(APP.db._agMapRaw ?? new Map()).values()].map(ag => {
                 const prod = APP.db.produtos.find(p => p.id === ag.sku);
                 return {
                     ...ag,
-                    desc:   prod?.desc        ?? ag.descForn ?? 'N/A',
-                    pkl:    prod?.pkl          ?? null,
-                    total:  prod?.total        ?? null,
-                    status: prod?.categoriaCor ?? 'sem-estoque',
+                    desc:   prod?.desc          ?? ag.descForn ?? 'N/A',
+                    pkl:    prod?.pkl            ?? null,
+                    total:  prod?.total          ?? null,
+                    status: prod?.categoriaCor   ?? 'sem-estoque',
                 };
             }).sort((a, b) => a.dataInicio.localeCompare(b.dataInicio));
 
@@ -323,10 +324,7 @@ const APP = {
             APP.processarUCGlobal_DPA();
             APP._detectarInconsistencias();
 
-            // ── Conecta SSE de alertas da IA ─────────────────────
-            APP._connectAIAlerts();
-
-            // ── Status barra ─────────────────────────────────────
+            // ── Status ────────────────────────────────────────────────
             const isServerMode = !!allData;
             if (st) {
                 st.innerText = isServerMode ? '● K11 OMNI ONLINE ⚡ SERVER' : '● K11 OMNI ONLINE';
@@ -351,14 +349,14 @@ const APP = {
 
             if (APP._warnNoServer) APP._showNoServerWarning();
 
+            // Dispara evento k11:ready para PWA deep links
             window.dispatchEvent(new Event('k11:ready'));
 
-            APP._serverLog('info', 'FRONTEND', 'K11 OMNI v4 carregado', {
-                produtos:        APP.db.produtos.length,
-                pdv:             APP.db.pdv.length,
-                tarefas:         APP.db.tarefas.length,
-                topRupturaCount: APP.rankings.topRupturaProxima.length,
-                serverMode:      isServerMode,
+            APP._serverLog('info', 'FRONTEND', 'K11 OMNI carregado com sucesso', {
+                produtos:   APP.db.produtos.length,
+                pdv:        APP.db.pdv.length,
+                tarefas:    APP.db.tarefas.length,
+                serverMode: isServerMode,
             });
 
         } catch (e) {
@@ -369,52 +367,7 @@ const APP = {
         }
     },
 
-    // ── SSE — alertas proativos da IA ────────────────────────────
-    _connectAIAlerts() {
-        const token = K11Auth.getToken();
-        if (!token || !K11_SERVER_URL) return;
-
-        try {
-            const src = new EventSource(
-                `${K11_SERVER_URL}/api/ai/v3/stream`,
-                { withCredentials: false }
-            );
-
-            src.addEventListener('proactive_alerts', (e) => {
-                try {
-                    const payload = JSON.parse(e.data);
-                    const alerts  = payload.alerts ?? [];
-                    if (!alerts.length) return;
-
-                    APP._aiAlertsCount += alerts.length;
-                    window.K11_ALERTS        = window.K11_ALERTS ?? [];
-                    window.K11_ALERTS_UNREAD = APP._aiAlertsCount;
-                    window.K11_ALERTS.push(...alerts);
-
-                    APP._updateNavBadges();
-
-                    // Toast para alertas críticos
-                    const crit = alerts.find(a => a.severity === 'CRITICAL');
-                    if (crit) {
-                        APP.ui.toast(`🚨 ${crit.title}`, 'danger');
-                    }
-                } catch (_) {}
-            });
-
-            src.addEventListener('connected', () => {
-                console.log('[K11 IA] SSE conectado');
-            });
-
-            src.onerror = () => {
-                src.close();
-                // Reconecta em 60s silenciosamente
-                setTimeout(() => APP._connectAIAlerts(), 60000);
-            };
-
-        } catch (_) {}
-    },
-
-    // ── SERVER FETCH ─────────────────────────────────────────────
+    // ── SERVER FETCH — usa JWT do sessionStorage ─────────────────
     async _serverFetch(path, options = {}) {
         const token = K11Auth.getToken();
         const url   = `${K11_SERVER_URL}${path}`;
@@ -427,7 +380,8 @@ const APP = {
                 ...options,
                 signal: controller.signal,
                 headers: {
-                    'Content-Type': 'application/json',
+                    'Content-Type':  'application/json',
+                    // JWT em vez de token estático hardcoded
                     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
                     ...(options.headers || {}),
                 },
@@ -448,14 +402,14 @@ const APP = {
         fetch(`${K11_SERVER_URL}/api/system/log`, {
             method:  'POST',
             headers: {
-                'Content-Type': 'application/json',
+                'Content-Type':  'application/json',
                 ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
             },
             body: JSON.stringify({ level, module, message, meta }),
         }).catch(() => {});
     },
 
-    // ── TOGGLE TAREFA SERVER ──────────────────────────────────────
+    // ── TOGGLE TAREFA ─────────────────────────────────────────────
     async toggleTarefaServer(id) {
         try {
             const res = await APP._serverFetch(`/api/data/tarefas/${id}/toggle`, { method: 'POST' });
@@ -485,7 +439,8 @@ const APP = {
                 await new Promise(res => setTimeout(res, 400));
                 return APP._safeFetch(url, retries - 1);
             }
-            if (location.protocol === 'file:') APP._warnNoServer = true;
+            const isFileProtocol = location.protocol === 'file:';
+            if (isFileProtocol) APP._warnNoServer = true;
             console.warn(`[K11 fetch] Falhou: ${url}`, e?.message || e);
             return [];
         }
@@ -498,12 +453,12 @@ const APP = {
 
     // ── DELEGAÇÕES ────────────────────────────────────────────────
     getCapacidade: (desc) => getCapacidade(desc),
-    processarEstoque(data)     { Processors.processarEstoque(data);           },
-    processarDueloAqua()       { Processors.processarDueloAqua();             },
-    processarBI_DualTrend()    { Processors.processarBI_DualTrend();          },
-    processarUCGlobal_DPA()    { Processors.processarUCGlobal_DPA();          },
-    _gerarAcoesPrioritarias()  { return Processors._gerarAcoesPrioritarias(); },
-    _detectarInconsistencias() { Processors.detectarInconsistencias();        },
+    processarEstoque(data)      { Processors.processarEstoque(data);           },
+    processarDueloAqua()        { Processors.processarDueloAqua();             },
+    processarBI_DualTrend()     { Processors.processarBI_DualTrend();          },
+    processarUCGlobal_DPA()     { Processors.processarUCGlobal_DPA();          },
+    _gerarAcoesPrioritarias()   { return Processors._gerarAcoesPrioritarias(); },
+    _detectarInconsistencias()  { Processors.detectarInconsistencias();        },
 
     views:   Views,
     actions: Actions,
@@ -522,61 +477,39 @@ const APP = {
         if (v === 'operacional') setTimeout(() => APP._setupSwipeFila(), 50);
     },
 
-    // ── BADGES NUMERAIS (v4) ──────────────────────────────────────
+    // ── UI HELPERS ────────────────────────────────────────────────
     _updateNavBadges() {
-        const rupturas   = APP.rankings.pieStats.red;
-        const proxRuptura = APP.rankings.topRupturaProxima.length;
-        const gargalos   = APP.db.ucGlobal.length;
-        const aiAlerts   = APP._aiAlertsCount;
-
-        // Nav buttons com data-badge="<tipo>"
-        document.querySelectorAll('[data-badge="estoque"]').forEach(el => {
-            el.dataset.badgeCount = rupturas > 0 ? rupturas : '';
-        });
-        document.querySelectorAll('[data-badge="reposicao"]').forEach(el => {
-            el.dataset.badgeCount = proxRuptura > 0 ? proxRuptura : '';
-        });
-        document.querySelectorAll('[data-badge="gargalos"]').forEach(el => {
-            el.dataset.badgeCount = gargalos > 0 ? gargalos : '';
-        });
-        document.querySelectorAll('[data-badge="ai"]').forEach(el => {
-            el.dataset.badgeCount = aiAlerts > 0 ? aiAlerts : '';
-        });
-
-        // Badge legado (data-count)
-        document.querySelectorAll('[data-badge="rupturas"]').forEach(el => {
-            el.dataset.count = rupturas > 0 ? rupturas : '';
-        });
-
-        // Atualiza badge inline na view se estiver visível
-        const iaBadgeEl = document.getElementById('ia-alerts-badge');
-        if (iaBadgeEl) {
-            iaBadgeEl.textContent = aiAlerts;
-            iaBadgeEl.style.display = aiAlerts > 0 ? 'inline-flex' : 'none';
-        }
+        const rupturas = APP.db.produtos.filter(p => p.categoriaCor === 'red').length;
+        const gargalos = APP.db.ucGlobal.length;
+        document.querySelectorAll('[data-badge="rupturas"]').forEach(el => { el.dataset.count = rupturas > 0 ? rupturas : ''; });
+        document.querySelectorAll('[data-badge="gargalos"]').forEach(el => { el.dataset.count = gargalos > 0 ? gargalos : ''; });
     },
 
-    // ── TOGGLE MODE ───────────────────────────────────────────────
     toggleMode() {
-        const current = (sessionStorage.getItem('k11_mode') || 'ultra').toLowerCase();
-        const next    = current === 'ultra' ? 'lite' : 'ultra';
+        const current  = (sessionStorage.getItem('k11_mode') || 'ultra').toLowerCase();
+        const next     = current === 'ultra' ? 'lite' : 'ultra';
 
         try { sessionStorage.setItem('k11_mode', next); } catch {}
+
+        // Atualiza variável global e classe do body
         window.K11_MODE = next;
         document.body.classList.toggle('mode-lite', next === 'lite');
 
+        // Atualiza o badge
         const badgeEl = document.getElementById('mode-badge-header');
         if (badgeEl) {
-            badgeEl.className   = `mode-badge ${next}`;
+            badgeEl.className = `mode-badge ${next}`;
             badgeEl.textContent = next === 'lite' ? '⚡ LITE' : '🧠 ULTRA';
         }
 
+        // Ajusta a view padrão
         window._K11_DEFAULT_VIEW = next === 'lite' ? 'estoque' : 'dash';
+
+        // Toast + navega pra view padrão do novo modo
         APP.ui.toast(`Modo ${next.toUpperCase()} ativado`, 'info');
         APP.view(window._K11_DEFAULT_VIEW);
     },
 
-    // ── PULL TO REFRESH ───────────────────────────────────────────
     _setupPullToRefresh() {
         let startY = 0;
         document.addEventListener('touchstart', e => { startY = e.touches[0].clientY; }, { passive: true });
@@ -589,45 +522,26 @@ const APP = {
         }, { passive: true });
     },
 
-    // ── SWIPE FILA ────────────────────────────────────────────────
     _setupSwipeFila() {
         document.querySelectorAll('.swipe-item').forEach(el => {
             const idx = parseInt(el.dataset.filaIdx, 10);
             let startX = 0, isDragging = false;
-            el.addEventListener('touchstart', e => {
-                startX = e.touches[0].clientX;
-                isDragging = true;
-                el.style.transition = 'none';
-            }, { passive: true });
-            el.addEventListener('touchmove', e => {
-                if (!isDragging) return;
-                const dx = e.touches[0].clientX - startX;
-                if (dx < 0) el.style.transform = `translateX(${dx}px)`;
-            }, { passive: true });
+            el.addEventListener('touchstart', e => { startX = e.touches[0].clientX; isDragging = true; el.style.transition = 'none'; }, { passive: true });
+            el.addEventListener('touchmove',  e => { if (!isDragging) return; const dx = e.touches[0].clientX - startX; if (dx < 0) el.style.transform = `translateX(${dx}px)`; }, { passive: true });
             el.addEventListener('touchend', e => {
-                if (!isDragging) return;
-                isDragging = false;
+                if (!isDragging) return; isDragging = false;
                 const dx = e.changedTouches[0].clientX - startX;
                 el.style.transition = 'transform 0.3s, opacity 0.3s';
-                if (dx < -80) {
-                    el.style.transform = 'translateX(-110%)';
-                    el.style.opacity   = '0';
-                    setTimeout(() => APP.actions.remFila(idx), 310);
-                } else {
-                    el.style.transform = 'translateX(0)';
-                }
+                if (dx < -80) { el.style.transform = 'translateX(-110%)'; el.style.opacity = '0'; setTimeout(() => APP.actions.remFila(idx), 310); }
+                else { el.style.transform = 'translateX(0)'; }
             }, { passive: true });
         });
     },
 
-    _saveFilaToSession()    {
-        try { sessionStorage.setItem('k11_fila', JSON.stringify(APP.db.fila)); } catch {}
-    },
+    _saveFilaToSession()    { try { sessionStorage.setItem('k11_fila', JSON.stringify(APP.db.fila)); } catch {} },
     _restoreFilaFromSession() {
-        try {
-            const raw = sessionStorage.getItem('k11_fila');
-            if (raw) APP.db.fila = JSON.parse(raw);
-        } catch { APP.db.fila = []; }
+        try { const raw = sessionStorage.getItem('k11_fila'); if (raw) APP.db.fila = JSON.parse(raw); }
+        catch { APP.db.fila = []; }
     },
 };
 
@@ -641,13 +555,15 @@ window.addEventListener('load', () => {
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').then(reg => {
 
+        // 1️⃣ AUTO-RELOAD: recebe mensagem do SW quando há nova versão
         navigator.serviceWorker.addEventListener('message', event => {
             if (event.data?.type === 'SW_UPDATED') {
-                console.log('[K11 PWA] Nova versão. Recarregando...');
+                console.log('[K11 PWA] Nova versão detectada. Recarregando...');
                 window.location.reload();
             }
         });
 
+        // 2️⃣ BOTÃO DE ATUALIZAR: aparece quando há update pendente (waiting)
         reg.addEventListener('updatefound', () => {
             const newWorker = reg.installing;
             newWorker?.addEventListener('statechange', () => {
@@ -657,13 +573,15 @@ if ('serviceWorker' in navigator) {
             });
         });
 
+        // Verifica update ao abrir o app
         reg.update().catch(() => {});
 
     }).catch(err => console.warn('[K11 SW] Registro falhou:', err));
 }
 
 function _mostrarBotaoAtualizar(reg) {
-    if (document.getElementById('k11-update-btn')) return;
+    const existente = document.getElementById('k11-update-btn');
+    if (existente) return;
 
     const style = document.createElement('style');
     style.textContent = `
