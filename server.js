@@ -69,6 +69,7 @@ const supervisor_svc = require('./services/ai-supervisor'); // serviço interno 
 
 // ── MIDDLEWARE E AUTH ─────────────────────────────────────────
 const auth           = require('./middleware/server-auth');
+const clienteRoutes  = require('./routes/k11-cliente-routes');
 const register       = require('./middleware/server-register');
 const requestTracker = require('./middleware/request-tracker');
 
@@ -197,20 +198,20 @@ app.get('/api/status', (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // ROTAS PROTEGIDAS — INTERNAS (Exigem Bearer token)
 // ─────────────────────────────────────────────────────────────
-app.use('/api/data',   auth.requireAuth, dataRoutes);
-app.use('/api/system', auth.requireAuth, systemRoutes);
-app.use('/api/ai',     auth.requireAuth, aiRoutes);
+app.use('/api/data',   auth.requireAuth, auth.requireOperacional, dataRoutes);
+app.use('/api/system', auth.requireAuth, auth.requireOperacional, systemRoutes);
+app.use('/api/ai',     auth.requireAuth, auth.requireOperacional, aiRoutes);
 
 
 // ─────────────────────────────────────────────────────────────
 // ROTAS — SUPERVISOR LEGACY (k11_supervisor_backend)
-// Mantidas para retrocompatibilidade com o frontend existente
+// ⚠ RESTRITO: somente equipe operacional K11 (role != cliente)
 // ─────────────────────────────────────────────────────────────
-app.get('/api/supervisor/stream', auth.requireAuth, (req, res) => {
+app.get('/api/supervisor/stream', auth.requireAuth, auth.requireOperacional, (req, res) => {
   supervisor.addSSEClient(res);
 });
 
-app.post('/api/supervisor/chat', auth.requireAuth, async (req, res) => {
+app.post('/api/supervisor/chat', auth.requireAuth, auth.requireOperacional, async (req, res) => {
   try {
     const { message } = req.body;
     if (!message) return res.status(400).json({ error: 'message required' });
@@ -221,18 +222,17 @@ app.post('/api/supervisor/chat', auth.requireAuth, async (req, res) => {
   }
 });
 
-app.get('/api/supervisor/status', auth.requireAuth, (req, res) => {
+app.get('/api/supervisor/status', auth.requireAuth, auth.requireOperacional, (req, res) => {
   res.json({ ok: true, data: supervisor.getState ? supervisor.getState() : {} });
 });
 
 
 // ─────────────────────────────────────────────────────────────
 // ROTAS — AI CORE v3 (k11_ai_core)
-// Chat com memória, CoT, análise proativa, SSE
+// ⚠ RESTRITO: somente equipe operacional K11 (role != cliente)
 // ─────────────────────────────────────────────────────────────
 
-// Chat inteligente com memória + CoT
-app.post('/api/ai/v3/chat', auth.requireAuth, async (req, res) => {
+app.post('/api/ai/v3/chat', auth.requireAuth, auth.requireOperacional, async (req, res) => {
   try {
     const { message, pdvId, pdvData, mode } = req.body;
     if (!message) return res.status(400).json({ error: 'message required' });
@@ -249,8 +249,7 @@ app.post('/api/ai/v3/chat', auth.requireAuth, async (req, res) => {
   }
 });
 
-// Geração de estratégia completa por PDV
-app.post('/api/ai/v3/strategy', auth.requireAuth, async (req, res) => {
+app.post('/api/ai/v3/strategy', auth.requireAuth, auth.requireOperacional, async (req, res) => {
   try {
     const { pdvData, depth } = req.body;
     const result = await aiCore.generateStrategy(pdvData, { depth: depth || 'full' });
@@ -260,8 +259,7 @@ app.post('/api/ai/v3/strategy', auth.requireAuth, async (req, res) => {
   }
 });
 
-// Análise de anomalia pontual
-app.post('/api/ai/v3/anomaly', auth.requireAuth, async (req, res) => {
+app.post('/api/ai/v3/anomaly', auth.requireAuth, auth.requireOperacional, async (req, res) => {
   try {
     const { pdvId, pdvName, metric, currentValue, expectedValue, unit } = req.body;
     const result = await aiCore.analyzeAnomaly(pdvId, pdvName, metric, currentValue, expectedValue, unit);
@@ -271,76 +269,64 @@ app.post('/api/ai/v3/anomaly', auth.requireAuth, async (req, res) => {
   }
 });
 
-// SSE — alertas proativos em tempo real
-app.get('/api/ai/v3/stream', auth.requireAuth, (req, res) => {
+app.get('/api/ai/v3/stream', auth.requireAuth, auth.requireOperacional, (req, res) => {
   aiCore.addSSEClient(res);
 });
 
-// Fila de alertas proativos pendentes
-app.get('/api/ai/v3/proactive', auth.requireAuth, (req, res) => {
+app.get('/api/ai/v3/proactive', auth.requireAuth, auth.requireOperacional, (req, res) => {
   res.json({ ok: true, alerts: aiCore.getProactiveAlerts() });
 });
 
-// Memória acumulada de um PDV
-app.get('/api/ai/v3/memory/:pdvId', auth.requireAuth, (req, res) => {
+app.get('/api/ai/v3/memory/:pdvId', auth.requireAuth, auth.requireOperacional, (req, res) => {
   res.json({ ok: true, data: aiCore.getMemory(req.params.pdvId) });
 });
 
 
 // ─────────────────────────────────────────────────────────────
 // ROTAS — PRICE INTELLIGENCE (k11_price_intelligence)
-// Scraping MercadoLivre + Google + análise Groq
+// ⚠ RESTRITO: somente equipe operacional K11 (role != cliente)
 // ─────────────────────────────────────────────────────────────
 
-// SSE — atualizações de preço em tempo real
-app.get('/api/price-intel/stream', auth.requireAuth, (req, res) => {
+app.get('/api/price-intel/stream', auth.requireAuth, auth.requireOperacional, (req, res) => {
   priceIntel.addSSEClient(res);
 });
 
-// Snapshot JSON atual
-app.get('/api/price-intel/state', auth.requireAuth, (req, res) => {
+app.get('/api/price-intel/state', auth.requireAuth, auth.requireOperacional, (req, res) => {
   res.json({ ok: true, data: priceIntel.getState() });
 });
 
-// Forçar scan geral imediato
-app.post('/api/price-intel/scan-all', auth.requireAuth, (req, res) => {
+app.post('/api/price-intel/scan-all', auth.requireAuth, auth.requireOperacional, (req, res) => {
   priceIntel.forceFullScan();
   res.json({ ok: true, message: 'Scan iniciado em background' });
 });
 
-// Histórico de preços por produto
-app.get('/api/price-intel/history/:productId', auth.requireAuth, (req, res) => {
+app.get('/api/price-intel/history/:productId', auth.requireAuth, auth.requireOperacional, (req, res) => {
   res.json({ ok: true, data: priceIntel.getPriceHistory(req.params.productId) });
 });
 
 
 // ─────────────────────────────────────────────────────────────
 // ROTAS — DECISION ENGINE (k11_decision_engine)
-// Health Score, Demand Forecast, Auto Replenishment
+// ⚠ RESTRITO: somente equipe operacional K11 (role != cliente)
 // ─────────────────────────────────────────────────────────────
 
-// SSE — ciclos de decisão em tempo real
-app.get('/api/decision/stream', auth.requireAuth, (req, res) => {
+app.get('/api/decision/stream', auth.requireAuth, auth.requireOperacional, (req, res) => {
   decisionEngine.addSSEClient(res);
 });
 
-// Snapshot JSON atual
-app.get('/api/decision/state', auth.requireAuth, (req, res) => {
+app.get('/api/decision/state', auth.requireAuth, auth.requireOperacional, (req, res) => {
   res.json({ ok: true, data: decisionEngine.getState() });
 });
 
-// Health score de um PDV específico
-app.get('/api/decision/health/:pdvId', auth.requireAuth, (req, res) => {
+app.get('/api/decision/health/:pdvId', auth.requireAuth, auth.requireOperacional, (req, res) => {
   res.json({ ok: true, data: decisionEngine.getHealthScore(req.params.pdvId) });
 });
 
-// Forecast de demanda por produto
-app.get('/api/decision/forecast/:productId', auth.requireAuth, (req, res) => {
+app.get('/api/decision/forecast/:productId', auth.requireAuth, auth.requireOperacional, (req, res) => {
   res.json({ ok: true, data: decisionEngine.getForecast(req.params.productId) });
 });
 
-// Forçar ciclo completo imediato
-app.post('/api/decision/run-cycle', auth.requireAuth, (req, res) => {
+app.post('/api/decision/run-cycle', auth.requireAuth, auth.requireOperacional, (req, res) => {
   decisionEngine.runFullCycle();
   res.json({ ok: true, message: 'Ciclo iniciado em background' });
 });
@@ -1009,6 +995,22 @@ ${orcamento.alertas?.length ? `<div style="margin-top:16px">${orcamento.alertas.
             return res.json({ ok:true, data:[] });
         } catch(e) { res.status(500).json({ ok:false, error:e.message }); }
     });
+
+// ─────────────────────────────────────────────────────────────
+// PORTAL DO CLIENTE — rota dedicada
+// ─────────────────────────────────────────────────────────────
+app.get('/cliente', (req, res) => {
+  res.sendFile('cliente-portal.html', { root: './public' });
+});
+app.get('/portal', (req, res) => {
+  res.sendFile('cliente-portal.html', { root: './public' });
+});
+
+// ─────────────────────────────────────────────────────────────
+// API DO CLIENTE — rotas REST do portal
+// Requer auth + role: cliente
+// ─────────────────────────────────────────────────────────────
+app.use('/api/cliente', auth.requireAuth, auth.requireCliente, clienteRoutes);
 
 // ─────────────────────────────────────────────────────────────
 // ARQUIVOS ESTÁTICOS E 404
