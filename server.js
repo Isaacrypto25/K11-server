@@ -69,6 +69,7 @@ const supervisor_svc = require('./services/ai-supervisor'); // serviço interno 
 
 // ── MIDDLEWARE E AUTH ─────────────────────────────────────────
 const auth           = require('./middleware/server-auth');
+const clienteAuth    = require('./middleware/k11-cliente-auth');
 const clienteRoutes  = require('./routes/k11-cliente-routes');
 const register       = require('./middleware/server-register');
 const requestTracker = require('./middleware/request-tracker');
@@ -339,25 +340,10 @@ app.post('/api/decision/run-cycle', auth.requireAuth, auth.requireOperacional, (
 // ═══════════════════════════════════════════════════════════════
 (function registerInlineRoutes(app, auth, logger, datastore) {
     const crypto = require('crypto');
-    const ITER = 310_000, KLEN = 32, DIG = 'sha256';
 
     function _sb()    { return datastore.supabase || null; }
     function _uuid()  { return crypto.randomUUID(); }
     function _now()   { return new Date().toISOString(); }
-
-    function _hashSenha(s) {
-        const salt = crypto.randomBytes(32).toString('hex');
-        const dk   = crypto.pbkdf2Sync(s, salt, ITER, KLEN, DIG);
-        return `pbkdf2$${salt}$${dk.toString('hex')}`;
-    }
-    function _verifySenha(s, stored) {
-        try {
-            const [,salt,exp] = stored.split('$');
-            const dk = crypto.pbkdf2Sync(s, salt, ITER, KLEN, DIG);
-            const b  = Buffer.from(exp, 'hex');
-            return dk.length === b.length && crypto.timingSafeEqual(dk, b);
-        } catch { return false; }
-    }
 
     // ── store local (fallback sem Supabase) ──
     const _store = { projects:[], alerts:[], inventory:[], orders:[] };
@@ -609,94 +595,7 @@ app.post('/api/decision/run-cycle', auth.requireAuth, auth.requireOperacional, (
         } catch(e) { res.status(500).json({ error:e.message }); }
     });
 
-    // ════════════════════════════════════════
-    // PORTAL DO CLIENTE — AUTH
-    // ════════════════════════════════════════
-
-    app.post('/api/auth/cliente/login', async (req, res) => {
-        const { email, senha } = req.body || {};
-        if (!email||!senha) return res.status(400).json({ ok:false, error:'Email/LDAP e senha obrigatórios.' });
-        const sb = _sb();
-        if (!sb) {
-            const token = auth.signJWT({ re:email, nome:email, role:'cliente' });
-            return res.json({ ok:true, token, user:{ nome:email, role:'cliente', email } });
-        }
-        // Atalho super: LDAP 8 dígitos
-        if (/^\d{8}$/.test(email.trim())) {
-            try {
-                const { data:su } = await sb.from('k11_users').select('ldap,nome,role,pin_hash,ativo').eq('ldap',email.trim()).eq('role','super').single();
-                if (su&&su.ativo) {
-                    if (auth.verifyPin(senha, su.pin_hash||'')) {
-                        const token = auth.signJWT({ re:su.ldap, nome:su.nome, role:'super' });
-                        return res.json({ ok:true, token, user:{ nome:su.nome, role:'super', email:su.ldap } });
-                    }
-                    return res.status(401).json({ ok:false, error:'LDAP ou senha incorretos.' });
-                }
-            } catch(_) {}
-        }
-        try {
-            const { data:user, error } = await sb.from('k11_clientes').select('id,nome,email,senha_hash,ativo').eq('email',email.toLowerCase().trim()).single();
-            if (error||!user) return res.status(401).json({ ok:false, error:'Email ou senha incorretos.' });
-            if (!user.ativo)  return res.status(401).json({ ok:false, error:'Conta desativada.' });
-            if (!_verifySenha(senha, user.senha_hash)) return res.status(401).json({ ok:false, error:'Email ou senha incorretos.' });
-            const token = auth.signJWT({ re:user.email, nome:user.nome, role:'cliente' });
-            return res.json({ ok:true, token, user:{ nome:user.nome, role:'cliente', email:user.email } });
-        } catch(e) { return res.status(500).json({ ok:false, error:'Erro interno.' }); }
-    });
-
-    app.post('/api/auth/cliente/register', async (req, res) => {
-        const { nome, email, senha } = req.body || {};
-        if (!nome||!email||!senha) return res.status(400).json({ ok:false, error:'Nome, email e senha obrigatórios.' });
-        if (nome.trim().length<3)   return res.status(400).json({ ok:false, field:'nome',  error:'Nome muito curto.' });
-        if (!email.includes('@'))   return res.status(400).json({ ok:false, field:'email', error:'Email inválido.' });
-        if (senha.length<6)         return res.status(400).json({ ok:false, field:'senha', error:'Senha: mín. 6 caracteres.' });
-        const sb = _sb();
-        if (!sb) {
-            const token = auth.signJWT({ re:email, nome:nome.trim(), role:'cliente' });
-            return res.status(201).json({ ok:true, token, user:{ nome:nome.trim(), role:'cliente', email } });
-        }
-        try {
-            const { data:ex } = await sb.from('k11_clientes').select('id').eq('email',email.toLowerCase().trim()).single();
-            if (ex) return res.status(409).json({ ok:false, field:'email', error:'Email já cadastrado.' });
-            const { data:novo, error } = await sb.from('k11_clientes').insert({ nome:nome.trim(), email:email.toLowerCase().trim(), senha_hash:_hashSenha(senha), ativo:true }).select('id,nome,email').single();
-            if (error) throw error;
-            const token = auth.signJWT({ re:novo.email, nome:novo.nome, role:'cliente' });
-            return res.status(201).json({ ok:true, token, user:{ nome:novo.nome, role:'cliente', email:novo.email } });
-        } catch(e) { return res.status(500).json({ ok:false, error:'Erro ao cadastrar.' }); }
-    });
-
-    app.post('/api/auth/cliente/forgot', async (req, res) => {
-        const { email } = req.body || {};
-        if (!email) return res.status(400).json({ ok:false, error:'Email obrigatório.' });
-        const MSG = 'Se o email estiver cadastrado, você receberá as instruções.';
-        const sb  = _sb();
-        if (!sb) return res.json({ ok:true, message:MSG });
-        try {
-            const { data:user } = await sb.from('k11_clientes').select('id,email').eq('email',email.toLowerCase().trim()).single();
-            if (user) {
-                const token = crypto.randomBytes(32).toString('hex');
-                await sb.from('k11_cliente_resets').upsert({ email:user.email, token, expires_at:new Date(Date.now()+3600000).toISOString() });
-            }
-        } catch(_) {}
-        return res.json({ ok:true, message:MSG });
-    });
-
-    app.post('/api/auth/cliente/reset', async (req, res) => {
-        const { email, token, nova_senha } = req.body || {};
-        if (!email||!token||!nova_senha) return res.status(400).json({ ok:false, error:'Campos obrigatórios.' });
-        if (nova_senha.length<6)         return res.status(400).json({ ok:false, error:'Senha: mín. 6 caracteres.' });
-        const sb = _sb();
-        if (!sb) return res.status(503).json({ ok:false, error:'Serviço indisponível.' });
-        try {
-            const { data:r } = await sb.from('k11_cliente_resets').select('*').eq('email',email.toLowerCase().trim()).eq('token',token).single();
-            if (!r||new Date(r.expires_at)<new Date()) return res.status(400).json({ ok:false, error:'Token inválido ou expirado.' });
-            await sb.from('k11_clientes').update({ senha_hash:_hashSenha(nova_senha) }).eq('email',email.toLowerCase().trim());
-            await sb.from('k11_cliente_resets').delete().eq('email',email.toLowerCase().trim());
-            return res.json({ ok:true, message:'Senha redefinida com sucesso.' });
-        } catch(e) { return res.status(500).json({ ok:false, error:'Erro interno.' }); }
-    });
-
-    logger.info('BOOT', '✓ Rotas inline: obramax + schedule + cliente registradas');
+    logger.info('BOOT', '✓ Rotas inline: obramax + schedule registradas');
 })(app, auth, logger, datastore);
 
 
@@ -997,18 +896,20 @@ ${orcamento.alertas?.length ? `<div style="margin-top:16px">${orcamento.alertas.
     });
 
 // ─────────────────────────────────────────────────────────────
-// PORTAL DO CLIENTE — rota dedicada
-// ─────────────────────────────────────────────────────────────
-app.get('/cliente', (req, res) => {
-  res.sendFile('cliente-portal.html', { root: './public' });
-});
-app.get('/portal', (req, res) => {
-  res.sendFile('cliente-portal.html', { root: './public' });
-});
-
-// ─────────────────────────────────────────────────────────────
 // API DO CLIENTE — rotas REST do portal
 // Requer auth + role: cliente
+// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// AUTH DO CLIENTE — única fonte de verdade
+// POST /api/auth/cliente/login
+// POST /api/auth/cliente/register
+// POST /api/auth/cliente/forgot
+// POST /api/auth/cliente/reset
+// ─────────────────────────────────────────────────────────────
+app.use('/api/auth/cliente', clienteAuth);
+
+// ─────────────────────────────────────────────────────────────
+// API DO CLIENTE — rotas REST do portal (requer role: cliente)
 // ─────────────────────────────────────────────────────────────
 app.use('/api/cliente', auth.requireAuth, auth.requireCliente, clienteRoutes);
 
