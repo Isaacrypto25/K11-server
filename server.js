@@ -169,153 +169,6 @@ app.post('/api/auth/reset-password',  register.resetPasswordHandler);
 
 
 // ─────────────────────────────────────────────────────────────
-// PORTAL DO CLIENTE — AUTH INLINE (sem require externo)
-// POST /api/auth/cliente/login
-// POST /api/auth/cliente/register
-// POST /api/auth/cliente/forgot
-// POST /api/auth/cliente/reset
-// ─────────────────────────────────────────────────────────────
-(function registerClienteRoutes(app, auth, logger, datastore) {
-    const crypto = require('crypto');
-    const ITER = 310_000, KLEN = 32, DIG = 'sha256';
-
-    function _hashSenha(s) {
-        const salt = crypto.randomBytes(32).toString('hex');
-        const dk   = crypto.pbkdf2Sync(s, salt, ITER, KLEN, DIG);
-        return `pbkdf2$${salt}$${dk.toString('hex')}`;
-    }
-    function _verifySenha(s, stored) {
-        try {
-            const [,salt,exp] = stored.split('$');
-            const dk  = crypto.pbkdf2Sync(s, salt, ITER, KLEN, DIG);
-            const buf = Buffer.from(exp, 'hex');
-            return dk.length === buf.length && crypto.timingSafeEqual(dk, buf);
-        } catch { return false; }
-    }
-    function _getSupabase() { return datastore.supabase || null; }
-
-    // ── POST /api/auth/cliente/login ──────────────────────────
-    app.post('/api/auth/cliente/login', async (req, res) => {
-        const { email, senha } = req.body || {};
-        if (!email || !senha)
-            return res.status(400).json({ ok: false, error: 'Email/LDAP e senha obrigatórios.' });
-
-        const sb = _getSupabase();
-        if (!sb) {
-            const token = auth.signJWT({ re: email, nome: email, role: 'cliente' });
-            return res.json({ ok: true, token, user: { nome: email, role: 'cliente', email } });
-        }
-
-        // Atalho super: LDAP 8 dígitos + PIN
-        if (/^\d{8}$/.test(email.trim())) {
-            try {
-                const { data: su } = await sb.from('k11_users')
-                    .select('ldap, nome, role, pin_hash, ativo')
-                    .eq('ldap', email.trim()).eq('role', 'super').single();
-                if (su && su.ativo) {
-                    const ok = auth.verifyPin(senha, su.pin_hash || '');
-                    if (ok) {
-                        const token = auth.signJWT({ re: su.ldap, nome: su.nome, role: 'super' });
-                        logger.info('CLIENTE-AUTH', `Super LDAP no portal cliente: ${su.ldap}`);
-                        return res.json({ ok: true, token, user: { nome: su.nome, role: 'super', email: su.ldap } });
-                    }
-                    return res.status(401).json({ ok: false, error: 'LDAP ou senha incorretos.' });
-                }
-            } catch (_) {}
-        }
-
-        // Login normal por email
-        try {
-            const { data: user, error } = await sb.from('k11_clientes')
-                .select('id, nome, email, senha_hash, ativo')
-                .eq('email', email.toLowerCase().trim()).single();
-            if (error || !user) return res.status(401).json({ ok: false, error: 'Email ou senha incorretos.' });
-            if (!user.ativo)    return res.status(401).json({ ok: false, error: 'Conta desativada.' });
-            if (!_verifySenha(senha, user.senha_hash)) return res.status(401).json({ ok: false, error: 'Email ou senha incorretos.' });
-            const token = auth.signJWT({ re: user.email, nome: user.nome, role: 'cliente' });
-            sb.from('k11_clientes').update({ ultimo_login: new Date().toISOString() }).eq('id', user.id).then(()=>{}).catch(()=>{});
-            return res.json({ ok: true, token, user: { nome: user.nome, role: 'cliente', email: user.email } });
-        } catch (err) {
-            logger.error('CLIENTE-AUTH', err.message);
-            return res.status(500).json({ ok: false, error: 'Erro interno.' });
-        }
-    });
-
-    // ── POST /api/auth/cliente/register ──────────────────────
-    app.post('/api/auth/cliente/register', async (req, res) => {
-        const { nome, email, senha } = req.body || {};
-        if (!nome || !email || !senha) return res.status(400).json({ ok: false, error: 'Nome, email e senha obrigatórios.' });
-        if (nome.trim().length < 3)    return res.status(400).json({ ok: false, field: 'nome',  error: 'Nome muito curto.' });
-        if (!email.includes('@'))      return res.status(400).json({ ok: false, field: 'email', error: 'Email inválido.' });
-        if (senha.length < 6)          return res.status(400).json({ ok: false, field: 'senha', error: 'Senha: mín. 6 caracteres.' });
-
-        const sb = _getSupabase();
-        if (!sb) {
-            const token = auth.signJWT({ re: email, nome: nome.trim(), role: 'cliente' });
-            return res.status(201).json({ ok: true, token, user: { nome: nome.trim(), role: 'cliente', email } });
-        }
-        try {
-            const { data: ex } = await sb.from('k11_clientes').select('id').eq('email', email.toLowerCase().trim()).single();
-            if (ex) return res.status(409).json({ ok: false, field: 'email', error: 'Email já cadastrado.' });
-            const { data: novo, error } = await sb.from('k11_clientes')
-                .insert({ nome: nome.trim(), email: email.toLowerCase().trim(), senha_hash: _hashSenha(senha), ativo: true })
-                .select('id, nome, email').single();
-            if (error) throw error;
-            const token = auth.signJWT({ re: novo.email, nome: novo.nome, role: 'cliente' });
-            logger.info('CLIENTE-AUTH', `Cadastro: ${novo.email}`);
-            return res.status(201).json({ ok: true, token, user: { nome: novo.nome, role: 'cliente', email: novo.email } });
-        } catch (err) {
-            logger.error('CLIENTE-AUTH', err.message);
-            return res.status(500).json({ ok: false, error: 'Erro ao cadastrar.' });
-        }
-    });
-
-    // ── POST /api/auth/cliente/forgot ─────────────────────────
-    app.post('/api/auth/cliente/forgot', async (req, res) => {
-        const { email } = req.body || {};
-        if (!email) return res.status(400).json({ ok: false, error: 'Email obrigatório.' });
-        const MSG = 'Se o email estiver cadastrado, você receberá as instruções.';
-        const sb  = _getSupabase();
-        if (!sb) return res.json({ ok: true, message: MSG });
-        try {
-            const { data: user } = await sb.from('k11_clientes').select('id, email').eq('email', email.toLowerCase().trim()).single();
-            if (user) {
-                const token     = crypto.randomBytes(32).toString('hex');
-                const expiresAt = new Date(Date.now() + 3600000).toISOString();
-                await sb.from('k11_cliente_resets').upsert({ email: user.email, token, expires_at: expiresAt });
-                logger.info('CLIENTE-AUTH', `Reset solicitado: ${user.email}`);
-            }
-        } catch (_) {}
-        return res.json({ ok: true, message: MSG });
-    });
-
-    // ── POST /api/auth/cliente/reset ──────────────────────────
-    app.post('/api/auth/cliente/reset', async (req, res) => {
-        const { email, token, nova_senha } = req.body || {};
-        if (!email || !token || !nova_senha) return res.status(400).json({ ok: false, error: 'Campos obrigatórios.' });
-        if (nova_senha.length < 6)           return res.status(400).json({ ok: false, error: 'Senha: mín. 6 caracteres.' });
-        const sb = _getSupabase();
-        if (!sb) return res.status(503).json({ ok: false, error: 'Serviço indisponível.' });
-        try {
-            const { data: r } = await sb.from('k11_cliente_resets').select('*')
-                .eq('email', email.toLowerCase().trim()).eq('token', token).single();
-            if (!r || new Date(r.expires_at) < new Date())
-                return res.status(400).json({ ok: false, error: 'Token inválido ou expirado.' });
-            await sb.from('k11_clientes').update({ senha_hash: _hashSenha(nova_senha) }).eq('email', email.toLowerCase().trim());
-            await sb.from('k11_cliente_resets').delete().eq('email', email.toLowerCase().trim());
-            return res.json({ ok: true, message: 'Senha redefinida com sucesso.' });
-        } catch (err) {
-            logger.error('CLIENTE-AUTH', err.message);
-            return res.status(500).json({ ok: false, error: 'Erro interno.' });
-        }
-    });
-
-    logger.info('BOOT', '✓ Portal do Cliente — rotas registradas');
-})(app, auth, logger, datastore);
-
-
-
-// ─────────────────────────────────────────────────────────────
 // ROTAS PÚBLICAS (sem auth)
 // ─────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
@@ -492,6 +345,362 @@ app.post('/api/decision/run-cycle', auth.requireAuth, (req, res) => {
   res.json({ ok: true, message: 'Ciclo iniciado em background' });
 });
 
+
+
+// ═══════════════════════════════════════════════════════════════
+// ROTAS INLINE — OBRAMAX, SCHEDULE, PORTAL CLIENTE
+// Embutidas diretamente para garantir deploy no Railway
+// ═══════════════════════════════════════════════════════════════
+(function registerInlineRoutes(app, auth, logger, datastore) {
+    const crypto = require('crypto');
+    const ITER = 310_000, KLEN = 32, DIG = 'sha256';
+
+    function _sb()    { return datastore.supabase || null; }
+    function _uuid()  { return crypto.randomUUID(); }
+    function _now()   { return new Date().toISOString(); }
+
+    function _hashSenha(s) {
+        const salt = crypto.randomBytes(32).toString('hex');
+        const dk   = crypto.pbkdf2Sync(s, salt, ITER, KLEN, DIG);
+        return `pbkdf2$${salt}$${dk.toString('hex')}`;
+    }
+    function _verifySenha(s, stored) {
+        try {
+            const [,salt,exp] = stored.split('$');
+            const dk = crypto.pbkdf2Sync(s, salt, ITER, KLEN, DIG);
+            const b  = Buffer.from(exp, 'hex');
+            return dk.length === b.length && crypto.timingSafeEqual(dk, b);
+        } catch { return false; }
+    }
+
+    // ── store local (fallback sem Supabase) ──
+    const _store = { projects:[], alerts:[], inventory:[], orders:[] };
+
+    // ════════════════════════════════════════
+    // OBRAMAX — /api/obramax/*
+    // ════════════════════════════════════════
+
+    // POST /api/obramax/projects
+    app.post('/api/obramax/projects', auth.requireAuth, async (req, res) => {
+        try {
+            const { name, address, start_date, predicted_end_date, budget, area_m2, description } = req.body;
+            const usuario_ldap = req.user?.re || req.user?.ldap || 'desconhecido';
+            if (!name || !address || !start_date || !predicted_end_date)
+                return res.status(400).json({ ok: false, error: 'name, address, start_date, predicted_end_date obrigatórios' });
+
+            const project = { id: _uuid(), name: name.trim(), address: address.trim(), start_date, predicted_end_date,
+                budget: parseFloat(budget)||0, area_m2: parseFloat(area_m2)||null, description: description||'',
+                usuario_ldap, status:'active', progress_pct:0, total_spent:0, created_at:_now(), updated_at:_now() };
+
+            const sb = _sb();
+            if (sb) {
+                const { data, error } = await sb.from('obras').insert(project).select().single();
+                if (error) throw error;
+                logger.info('OBRAMAX', `Obra criada: ${data.name}`);
+                return res.status(201).json({ success:true, ok:true, data });
+            }
+            _store.projects.push(project);
+            return res.status(201).json({ success:true, ok:true, data: project });
+        } catch(e) { logger.error('OBRAMAX',e.message); res.status(500).json({ ok:false, error:e.message }); }
+    });
+
+    // GET /api/obramax/projects
+    app.get('/api/obramax/projects', auth.requireAuth, async (req, res) => {
+        try {
+            const ldap = req.user?.re || req.user?.ldap;
+            const sb   = _sb();
+            if (sb) {
+                const { data, error } = await sb.from('obras').select('*').eq('usuario_ldap', ldap).order('created_at',{ascending:false});
+                if (error) throw error;
+                return res.json({ success:true, ok:true, data: data||[] });
+            }
+            return res.json({ success:true, ok:true, data: _store.projects.filter(p=>p.usuario_ldap===ldap) });
+        } catch(e) { res.status(500).json({ ok:false, error:e.message }); }
+    });
+
+    // GET /api/obramax/projects/:id
+    app.get('/api/obramax/projects/:id', auth.requireAuth, async (req, res) => {
+        try {
+            const sb = _sb();
+            if (sb) {
+                const { data, error } = await sb.from('obras').select('*').eq('id',req.params.id).single();
+                if (error||!data) return res.status(404).json({ ok:false, error:'Obra não encontrada' });
+                return res.json({ ok:true, data });
+            }
+            const o = _store.projects.find(p=>p.id===req.params.id);
+            if (!o) return res.status(404).json({ ok:false, error:'Obra não encontrada' });
+            return res.json({ ok:true, data:o });
+        } catch(e) { res.status(500).json({ ok:false, error:e.message }); }
+    });
+
+    // PUT /api/obramax/projects/:id
+    app.put('/api/obramax/projects/:id', auth.requireAuth, async (req, res) => {
+        try {
+            const updates = { ...req.body, updated_at:_now() };
+            delete updates.id; delete updates.usuario_ldap;
+            const sb = _sb();
+            if (sb) {
+                const { data, error } = await sb.from('obras').update(updates).eq('id',req.params.id).select().single();
+                if (error) throw error;
+                return res.json({ ok:true, data });
+            }
+            const idx = _store.projects.findIndex(p=>p.id===req.params.id);
+            if (idx<0) return res.status(404).json({ ok:false, error:'Não encontrada' });
+            _store.projects[idx] = {..._store.projects[idx],...updates};
+            return res.json({ ok:true, data:_store.projects[idx] });
+        } catch(e) { res.status(500).json({ ok:false, error:e.message }); }
+    });
+
+    // DELETE /api/obramax/projects/:id
+    app.delete('/api/obramax/projects/:id', auth.requireAuth, async (req, res) => {
+        try {
+            const sb = _sb();
+            if (sb) { const { error } = await sb.from('obras').delete().eq('id',req.params.id); if (error) throw error; }
+            else { _store.projects = _store.projects.filter(p=>p.id!==req.params.id); }
+            return res.json({ ok:true, message:'Obra removida' });
+        } catch(e) { res.status(500).json({ ok:false, error:e.message }); }
+    });
+
+    // GET /api/obramax/alerts/:project_id
+    app.get('/api/obramax/alerts/:project_id', auth.requireAuth, async (req, res) => {
+        try {
+            const sb = _sb();
+            if (sb) {
+                const { data, error } = await sb.from('obra_alerts').select('*').eq('project_id',req.params.project_id).eq('resolved',false);
+                if (error) throw error;
+                return res.json({ ok:true, data: data||[] });
+            }
+            return res.json({ ok:true, data: _store.alerts.filter(a=>a.project_id===req.params.project_id&&!a.resolved) });
+        } catch(e) { res.status(500).json({ ok:false, error:e.message }); }
+    });
+
+    // POST /api/obramax/alerts/:alertId/resolve
+    app.post('/api/obramax/alerts/:alertId/resolve', auth.requireAuth, async (req, res) => {
+        try {
+            const sb = _sb();
+            if (sb) { await sb.from('obra_alerts').update({resolved:true,resolved_at:_now()}).eq('id',req.params.alertId); }
+            else { const a=_store.alerts.find(x=>x.id===req.params.alertId); if(a){a.resolved=true;} }
+            return res.json({ ok:true, message:'Alerta resolvido' });
+        } catch(e) { res.status(500).json({ ok:false, error:e.message }); }
+    });
+
+    // GET /api/obramax/inventory/:project_id
+    app.get('/api/obramax/inventory/:project_id', auth.requireAuth, async (req, res) => {
+        try {
+            const sb = _sb();
+            if (sb) {
+                const { data, error } = await sb.from('obra_inventory').select('*').eq('project_id',req.params.project_id);
+                if (error) throw error;
+                return res.json({ ok:true, data: data||[] });
+            }
+            return res.json({ ok:true, data: _store.inventory.filter(i=>i.project_id===req.params.project_id) });
+        } catch(e) { res.status(500).json({ ok:false, error:e.message }); }
+    });
+
+    // POST /api/obramax/inventory/:project_id/consume
+    app.post('/api/obramax/inventory/:project_id/consume', auth.requireAuth, async (req, res) => {
+        try {
+            const { sku, quantity, notes } = req.body;
+            if (!sku||!quantity) return res.status(400).json({ ok:false, error:'sku e quantity obrigatórios' });
+            const entry = { id:_uuid(), project_id:req.params.project_id, sku, quantity:parseFloat(quantity), type:'consumo', notes:notes||'', created_at:_now() };
+            const sb = _sb();
+            if (sb) { const { data, error } = await sb.from('obra_inventory').insert(entry).select().single(); if(error) throw error; return res.status(201).json({ ok:true, data }); }
+            _store.inventory.push(entry);
+            return res.status(201).json({ ok:true, data:entry });
+        } catch(e) { res.status(500).json({ ok:false, error:e.message }); }
+    });
+
+    // GET /api/obramax/orders
+    app.get('/api/obramax/orders', auth.requireAuth, async (req, res) => {
+        try {
+            const { project_id } = req.query;
+            const sb = _sb();
+            if (sb) {
+                let q = sb.from('orders_obramax').select('*').order('created_at',{ascending:false});
+                if (project_id) q = q.eq('project_id',project_id);
+                const { data, error } = await q;
+                if (error) throw error;
+                return res.json({ ok:true, data: data||[] });
+            }
+            const orders = project_id ? _store.orders.filter(o=>o.project_id===project_id) : _store.orders;
+            return res.json({ ok:true, data: orders });
+        } catch(e) { res.status(500).json({ ok:false, error:e.message }); }
+    });
+
+    // GET /api/obramax/products
+    app.get('/api/obramax/products', auth.requireAuth, (req, res) => {
+        const PRODUCTS = [
+            { sku:'CIM001', name:'Cimento Portland 50kg', category:'cimento', price:35.90, stock:500, delivery_days:1 },
+            { sku:'ARE001', name:'Areia Média 1m³', category:'agregados', price:120.00, stock:200, delivery_days:2 },
+            { sku:'BRI001', name:'Tijolo Comum 1mil', category:'alvenaria', price:890.00, stock:50, delivery_days:3 },
+            { sku:'FER001', name:'Ferro CA-50 10mm', category:'estrutura', price:58.00, stock:300, delivery_days:1 },
+        ];
+        res.json({ success:true, data: PRODUCTS, total: PRODUCTS.length });
+    });
+
+    // ════════════════════════════════════════
+    // SCHEDULE — /api/schedule/*
+    // ════════════════════════════════════════
+
+    // GET /api/schedule/phases/:project_id
+    app.get('/api/schedule/phases/:project_id', auth.requireAuth, async (req, res) => {
+        try {
+            const sb = _sb();
+            if (sb) {
+                const { data, error } = await sb.from('phases').select('*').eq('project_id',req.params.project_id).order('created_at',{ascending:true});
+                if (error) throw error;
+                return res.json({ success:true, data: data||[] });
+            }
+            return res.json({ success:true, data:[] });
+        } catch(e) { res.status(500).json({ error:e.message }); }
+    });
+
+    // POST /api/schedule/phases
+    app.post('/api/schedule/phases', auth.requireAuth, async (req, res) => {
+        try {
+            const { project_id, phase_type, start_date, area_m2 } = req.body;
+            if (!project_id||!phase_type||!start_date)
+                return res.status(400).json({ error:'project_id, phase_type, start_date obrigatórios' });
+            const TEMPLATES = {
+                fundacao:  { name:'Fundação',  duration_days:20 },
+                estrutura: { name:'Estrutura', duration_days:30 },
+                alvenaria: { name:'Alvenaria', duration_days:45 },
+                reboco:    { name:'Reboco',    duration_days:30 },
+                pintura:   { name:'Pintura',   duration_days:15 },
+            };
+            const tmpl = TEMPLATES[phase_type] || { name: phase_type, duration_days:30 };
+            const end  = new Date(new Date(start_date).getTime() + tmpl.duration_days*86400000).toISOString().split('T')[0];
+            const phase = { id:_uuid(), project_id, name:tmpl.name, start_date, predicted_end_date:end, estimated_days:tmpl.duration_days, progress_percent:0, status:'pending', created_at:_now() };
+            const sb = _sb();
+            if (sb) {
+                const { data, error } = await sb.from('phases').insert(phase).select().single();
+                if (error) throw error;
+                return res.json({ success:true, phase:data, message:`${tmpl.name} criada` });
+            }
+            return res.json({ success:true, phase, message:`${tmpl.name} criada` });
+        } catch(e) { res.status(500).json({ error:e.message }); }
+    });
+
+    // POST /api/schedule/:phase_id/update-progress
+    app.post('/api/schedule/:phase_id/update-progress', auth.requireAuth, async (req, res) => {
+        try {
+            const pct = parseInt(req.body.progress_percent||0);
+            const status = pct===100?'completed':pct>0?'in_progress':'pending';
+            const sb = _sb();
+            if (sb) {
+                await sb.from('phases').update({ progress_percent:pct, status }).eq('id',req.params.phase_id);
+            }
+            return res.json({ success:true, status });
+        } catch(e) { res.status(500).json({ error:e.message }); }
+    });
+
+    // POST /api/schedule/predict-delays
+    app.post('/api/schedule/predict-delays', auth.requireAuth, async (req, res) => {
+        return res.json({ success:true, analysis:{ risk_level:'low', at_risk_phases:[], recommendations:['Cronograma dentro do prazo'] }, alerts_created:0 });
+    });
+
+    // GET /api/schedule/:phase_id/materials
+    app.get('/api/schedule/:phase_id/materials', auth.requireAuth, async (req, res) => {
+        try {
+            const sb = _sb();
+            if (sb) {
+                const { data, error } = await sb.from('phase_materials').select('*').eq('phase_id',req.params.phase_id);
+                if (error) throw error;
+                return res.json({ success:true, data: data||[] });
+            }
+            return res.json({ success:true, data:[] });
+        } catch(e) { res.status(500).json({ error:e.message }); }
+    });
+
+    // ════════════════════════════════════════
+    // PORTAL DO CLIENTE — AUTH
+    // ════════════════════════════════════════
+
+    app.post('/api/auth/cliente/login', async (req, res) => {
+        const { email, senha } = req.body || {};
+        if (!email||!senha) return res.status(400).json({ ok:false, error:'Email/LDAP e senha obrigatórios.' });
+        const sb = _sb();
+        if (!sb) {
+            const token = auth.signJWT({ re:email, nome:email, role:'cliente' });
+            return res.json({ ok:true, token, user:{ nome:email, role:'cliente', email } });
+        }
+        // Atalho super: LDAP 8 dígitos
+        if (/^\d{8}$/.test(email.trim())) {
+            try {
+                const { data:su } = await sb.from('k11_users').select('ldap,nome,role,pin_hash,ativo').eq('ldap',email.trim()).eq('role','super').single();
+                if (su&&su.ativo) {
+                    if (auth.verifyPin(senha, su.pin_hash||'')) {
+                        const token = auth.signJWT({ re:su.ldap, nome:su.nome, role:'super' });
+                        return res.json({ ok:true, token, user:{ nome:su.nome, role:'super', email:su.ldap } });
+                    }
+                    return res.status(401).json({ ok:false, error:'LDAP ou senha incorretos.' });
+                }
+            } catch(_) {}
+        }
+        try {
+            const { data:user, error } = await sb.from('k11_clientes').select('id,nome,email,senha_hash,ativo').eq('email',email.toLowerCase().trim()).single();
+            if (error||!user) return res.status(401).json({ ok:false, error:'Email ou senha incorretos.' });
+            if (!user.ativo)  return res.status(401).json({ ok:false, error:'Conta desativada.' });
+            if (!_verifySenha(senha, user.senha_hash)) return res.status(401).json({ ok:false, error:'Email ou senha incorretos.' });
+            const token = auth.signJWT({ re:user.email, nome:user.nome, role:'cliente' });
+            return res.json({ ok:true, token, user:{ nome:user.nome, role:'cliente', email:user.email } });
+        } catch(e) { return res.status(500).json({ ok:false, error:'Erro interno.' }); }
+    });
+
+    app.post('/api/auth/cliente/register', async (req, res) => {
+        const { nome, email, senha } = req.body || {};
+        if (!nome||!email||!senha) return res.status(400).json({ ok:false, error:'Nome, email e senha obrigatórios.' });
+        if (nome.trim().length<3)   return res.status(400).json({ ok:false, field:'nome',  error:'Nome muito curto.' });
+        if (!email.includes('@'))   return res.status(400).json({ ok:false, field:'email', error:'Email inválido.' });
+        if (senha.length<6)         return res.status(400).json({ ok:false, field:'senha', error:'Senha: mín. 6 caracteres.' });
+        const sb = _sb();
+        if (!sb) {
+            const token = auth.signJWT({ re:email, nome:nome.trim(), role:'cliente' });
+            return res.status(201).json({ ok:true, token, user:{ nome:nome.trim(), role:'cliente', email } });
+        }
+        try {
+            const { data:ex } = await sb.from('k11_clientes').select('id').eq('email',email.toLowerCase().trim()).single();
+            if (ex) return res.status(409).json({ ok:false, field:'email', error:'Email já cadastrado.' });
+            const { data:novo, error } = await sb.from('k11_clientes').insert({ nome:nome.trim(), email:email.toLowerCase().trim(), senha_hash:_hashSenha(senha), ativo:true }).select('id,nome,email').single();
+            if (error) throw error;
+            const token = auth.signJWT({ re:novo.email, nome:novo.nome, role:'cliente' });
+            return res.status(201).json({ ok:true, token, user:{ nome:novo.nome, role:'cliente', email:novo.email } });
+        } catch(e) { return res.status(500).json({ ok:false, error:'Erro ao cadastrar.' }); }
+    });
+
+    app.post('/api/auth/cliente/forgot', async (req, res) => {
+        const { email } = req.body || {};
+        if (!email) return res.status(400).json({ ok:false, error:'Email obrigatório.' });
+        const MSG = 'Se o email estiver cadastrado, você receberá as instruções.';
+        const sb  = _sb();
+        if (!sb) return res.json({ ok:true, message:MSG });
+        try {
+            const { data:user } = await sb.from('k11_clientes').select('id,email').eq('email',email.toLowerCase().trim()).single();
+            if (user) {
+                const token = crypto.randomBytes(32).toString('hex');
+                await sb.from('k11_cliente_resets').upsert({ email:user.email, token, expires_at:new Date(Date.now()+3600000).toISOString() });
+            }
+        } catch(_) {}
+        return res.json({ ok:true, message:MSG });
+    });
+
+    app.post('/api/auth/cliente/reset', async (req, res) => {
+        const { email, token, nova_senha } = req.body || {};
+        if (!email||!token||!nova_senha) return res.status(400).json({ ok:false, error:'Campos obrigatórios.' });
+        if (nova_senha.length<6)         return res.status(400).json({ ok:false, error:'Senha: mín. 6 caracteres.' });
+        const sb = _sb();
+        if (!sb) return res.status(503).json({ ok:false, error:'Serviço indisponível.' });
+        try {
+            const { data:r } = await sb.from('k11_cliente_resets').select('*').eq('email',email.toLowerCase().trim()).eq('token',token).single();
+            if (!r||new Date(r.expires_at)<new Date()) return res.status(400).json({ ok:false, error:'Token inválido ou expirado.' });
+            await sb.from('k11_clientes').update({ senha_hash:_hashSenha(nova_senha) }).eq('email',email.toLowerCase().trim());
+            await sb.from('k11_cliente_resets').delete().eq('email',email.toLowerCase().trim());
+            return res.json({ ok:true, message:'Senha redefinida com sucesso.' });
+        } catch(e) { return res.status(500).json({ ok:false, error:'Erro interno.' }); }
+    });
+
+    logger.info('BOOT', '✓ Rotas inline: obramax + schedule + cliente registradas');
+})(app, auth, logger, datastore);
 
 // ─────────────────────────────────────────────────────────────
 // ARQUIVOS ESTÁTICOS E 404
