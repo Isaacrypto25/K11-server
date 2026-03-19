@@ -202,3 +202,25 @@ function getCapacidade(desc) {
         || String(desc).match(/\b(\d+)\s*(?:UN|PCS|PC)\b/i);
     return m ? Math.max(1, parseInt(m[1])) : 1;
 }
+
+// ── EVENT BUS — pub/sub global mínimo ────────────────────────
+// [FIX A] EventBus não estava definido em nenhum arquivo.
+// k11-processors.js chamava EventBus.emit() sem guard → ReferenceError
+// dentro de processarEstoque() → capturado pelo catch do init() → toast de erro.
+const EventBus = (() => {
+    const _listeners = {};
+    return {
+        on(event, fn) {
+            if (!_listeners[event]) _listeners[event] = [];
+            _listeners[event].push(fn);
+        },
+        off(event, fn) {
+            _listeners[event] = (_listeners[event] || []).filter(f => f !== fn);
+        },
+        emit(event, data) {
+            (_listeners[event] || []).forEach(fn => {
+                try { fn(data); } catch (e) { console.warn('[EventBus]', event, e); }
+            });
+        },
+    };
+})();
