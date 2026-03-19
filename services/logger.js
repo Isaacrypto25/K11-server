@@ -1,119 +1,88 @@
-/**
- * K11 OMNI ELITE — LOGGER SERVICE
- * ════════════════════════════════
- * Sistema de logs estruturado com:
- * - Níveis: DEBUG | INFO | WARN | ERROR | CRITICAL
- * - Persistência em arquivo rotativo
- * - Emissão via EventEmitter para SSE em tempo real
- * - Estatísticas de erros por módulo
- */
-
 'use strict';
 
-const fs           = require('fs');
-const path         = require('path');
-const { EventEmitter } = require('events');
+/**
+ * K11 OMNI ELITE — Logger Service
+ * Níveis: debug < info < warn < error < critical
+ * Armazena os últimos N logs em memória para streaming SSE
+ */
 
-const LOG_DIR      = path.join(__dirname, '..', 'logs');
-const LOG_FILE     = path.join(LOG_DIR, 'k11.log');
-const MAX_LINES    = parseInt(process.env.LOG_MAX_LINES || '2000', 10);
+const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3, critical: 4 };
+const CURRENT_LEVEL = LOG_LEVELS[process.env.LOG_LEVEL || 'info'];
+const MAX_IN_MEMORY = 500;
 
-// Garante que a pasta de logs existe
-if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
+const _logs = [];
+const _stats = { debug: 0, info: 0, warn: 0, error: 0, critical: 0 };
+const _sseClients = new Set();
 
-// ── CORES ANSI PARA TERMINAL ──────────────────────────
-const C = {
-    reset:    '\x1b[0m',
-    bright:   '\x1b[1m',
-    debug:    '\x1b[36m',   // cyan
-    info:     '\x1b[32m',   // green
-    warn:     '\x1b[33m',   // yellow
-    error:    '\x1b[31m',   // red
-    critical: '\x1b[35m',   // magenta
-    time:     '\x1b[90m',   // gray
-    module:   '\x1b[34m',   // blue
-};
-
-class K11Logger extends EventEmitter {
-    constructor() {
-        super();
-        this._buffer    = [];    // últimas N entradas em memória
-        this._stats     = { debug: 0, info: 0, warn: 0, error: 0, critical: 0 };
-        this._startTime = Date.now();
-    }
-
-    _write(level, module, message, meta = null) {
-        const now     = new Date();
-        const ts      = now.toISOString();
-        const uptime  = Math.floor((Date.now() - this._startTime) / 1000);
-
-        const entry = {
-            id:       `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            ts,
-            level,
-            module:   module || 'CORE',
-            message:  String(message),
-            meta:     meta || null,
-            uptime,
-        };
-
-        // Estatísticas
-        this._stats[level] = (this._stats[level] || 0) + 1;
-
-        // Buffer em memória (rolling)
-        this._buffer.push(entry);
-        if (this._buffer.length > MAX_LINES) this._buffer.shift();
-
-        // Terminal colorido
-        const color  = C[level] || C.info;
-        const badge  = level.toUpperCase().padEnd(8);
-        const mod    = `[${entry.module}]`.padEnd(16);
-        console.log(
-            `${C.time}${ts.slice(11, 23)}${C.reset} ` +
-            `${color}${C.bright}${badge}${C.reset} ` +
-            `${C.module}${mod}${C.reset} ` +
-            `${message}` +
-            (meta ? ` ${C.time}${JSON.stringify(meta)}${C.reset}` : '')
-        );
-
-        // Persistência em arquivo (não-bloqueante)
-        const line = JSON.stringify(entry) + '\n';
-        fs.appendFile(LOG_FILE, line, () => {});
-
-        // Emite para listeners SSE em tempo real
-        this.emit('log', entry);
-
-        return entry;
-    }
-
-    debug   (mod, msg, meta) { return this._write('debug',    mod, msg, meta); }
-    info    (mod, msg, meta) { return this._write('info',     mod, msg, meta); }
-    warn    (mod, msg, meta) { return this._write('warn',     mod, msg, meta); }
-    error   (mod, msg, meta) { return this._write('error',    mod, msg, meta); }
-    critical(mod, msg, meta) { return this._write('critical', mod, msg, meta); }
-
-    /** Últimas N entradas, opcionalmente filtradas */
-    getLogs({ level, module, limit = 200 } = {}) {
-        let entries = [...this._buffer];
-        if (level)  entries = entries.filter(e => e.level  === level);
-        if (module) entries = entries.filter(e => e.module === module);
-        return entries.slice(-limit).reverse();
-    }
-
-    getStats() {
-        return {
-            ...this._stats,
-            total:      Object.values(this._stats).reduce((a, b) => a + b, 0),
-            uptimeMs:   Date.now() - this._startTime,
-            bufferSize: this._buffer.length,
-        };
-    }
-
-    /** Limpa log file em disco (mantém buffer em memória) */
-    clearFile(cb) {
-        fs.writeFile(LOG_FILE, '', cb || (() => {}));
-        this.info('LOGGER', 'Log file cleared by admin');
-    }
+function _fmt(level, module, message, meta) {
+    const ts = new Date().toISOString();
+    const entry = {
+        ts,
+        level,
+        module: module || 'SYSTEM',
+        message: String(message),
+        meta: meta || null,
+    };
+    return entry;
 }
 
-module.exports = new K11Logger();
+function _emit(entry) {
+    // Guarda na memória circular
+    _logs.push(entry);
+    if (_logs.length > MAX_IN_MEMORY) _logs.shift();
+    _stats[entry.level] = (_stats[entry.level] || 0) + 1;
+
+    // Envia para SSE clients
+    if (_sseClients.size > 0) {
+        const payload = `data: ${JSON.stringify(entry)}\n\n`;
+        for (const res of _sseClients) {
+            try { res.write(payload); } catch (_) { _sseClients.delete(res); }
+        }
+    }
+
+    // Imprime no console
+    const icons = { debug: '🔍', info: '✅', warn: '⚠️ ', error: '❌', critical: '💥' };
+    const icon = icons[entry.level] || '  ';
+    const meta = entry.meta ? ' ' + JSON.stringify(entry.meta) : '';
+    console.log(`${icon} [${entry.ts}] [${entry.module}] ${entry.message}${meta}`);
+}
+
+function log(level, module, message, meta) {
+    if (LOG_LEVELS[level] < CURRENT_LEVEL) return;
+    _emit(_fmt(level, module, message, meta));
+}
+
+const logger = {
+    debug:    (mod, msg, meta) => log('debug',    mod, msg, meta),
+    info:     (mod, msg, meta) => log('info',     mod, msg, meta),
+    warn:     (mod, msg, meta) => log('warn',     mod, msg, meta),
+    error:    (mod, msg, meta) => log('error',    mod, msg, meta),
+    critical: (mod, msg, meta) => log('critical', mod, msg, meta),
+
+    /** Últimos N logs em memória */
+    getLogs(limit = 100) {
+        return _logs.slice(-limit);
+    },
+
+    /** Estatísticas por nível */
+    getStats() {
+        return { ..._stats, total: _logs.length };
+    },
+
+    /** Registra um SSE response para streaming de logs */
+    addSSEClient(res) {
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.flushHeaders?.();
+        _sseClients.add(res);
+        // Envia últimos 50 logs como histórico
+        const history = _logs.slice(-50);
+        for (const entry of history) {
+            try { res.write(`data: ${JSON.stringify(entry)}\n\n`); } catch (_) {}
+        }
+        res.on('close', () => _sseClients.delete(res));
+    },
+};
+
+module.exports = logger;
