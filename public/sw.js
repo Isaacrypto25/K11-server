@@ -3,33 +3,58 @@
  * PWA offline-first com cache estratégico
  * Cache-first para assets estáticos, network-first para API
  */
-const CACHE_NAME   = 'k11-omni-v3';
+const CACHE_NAME   = 'k11-omni-v4';
 const API_CACHE    = 'k11-api-v1';
 const OFFLINE_PAGE = '/';
 
 const PRECACHE_URLS = [
   '/',
   '/dashboard.html',
+  // CSS
   '/global.css',
   '/k11-skill-styles.css',
+  // Core
   '/k11-config.js',
   '/k11-utils.js',
-  '/k11-views.js',
-  '/k11-app.js',
-  '/k11-ui.js',
   '/k11-processors.js',
-  '/k11-actions-.js',
-  '/k11-brain-auxiliar.js',
-  '/k11-data-inject.js',
-  '/k11-live-panel.js',
-  '/k11-live-engine.js',
+  '/k11-ui.js',
+  '/k11-views.js',
   '/k11-skill-system.js',
   '/k11-mission-engine.js',
+  // Brain & Data
+  '/k11-brain-auxiliar.js',
+  '/k11-data-inject.js',
+  // Actions
+  '/k11-actions-.js',
+  '/k11-actions-extras-v5.js',
+  // Menu & Modais
+  '/k11-menu-expandable.js',
+  '/k11-modal-regional.js',
+  '/k11-onboarding-modal.js',
+  '/k11-onboarding-tour.js',
+  // Perfil
+  '/k11-user-profile.js',
+  '/k11-radar-profile.js',
+  // Orcamento
+  '/k11-orcamento-ia.js',
+  // Obras
+  '/k11-obra-actions.js',
+  '/k11-obra-views.js',
   '/k11-obra.js',
+  // Live
+  '/k11-live-engine.js',
+  '/k11-live-panel.js',
+  // Voz
+  '/k11-voice-id.js',
+  '/k11-key-voice.js',
   '/k11-voice.js',
+  // Extras
   '/k11-float-ai.js',
-  '/k11-auth-ui.js',
+  '/k11-gestures.js',
+  '/k11-app.js',
+  // PWA
   '/manifest.json',
+  '/favicon.png',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
 ];
