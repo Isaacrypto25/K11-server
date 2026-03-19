@@ -335,6 +335,17 @@ const APP = {
             APP._setupSwipeFila();
             APP._updateNavBadges();
 
+            // ── Popula iniciais do botão de perfil imediatamente ──
+            try {
+                const _u = JSON.parse(sessionStorage.getItem('k11_user') || '{}');
+                const _nome = _u.nome || _u.name || '';
+                const _initials = _nome.split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase() || (_u.re||'K').slice(0,2).toUpperCase();
+                ['profile-fab-initials','profile-btn-initials'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.textContent = _initials;
+                });
+            } catch(_) {}
+
             const badgeEl = document.getElementById('mode-badge-header');
             if (badgeEl) {
                 const mode = (typeof K11_MODE !== 'undefined') ? K11_MODE : 'ultra';
@@ -351,6 +362,11 @@ const APP = {
 
             // Dispara evento k11:ready para PWA deep links
             window.dispatchEvent(new Event('k11:ready'));
+
+            // ── K11 OBRA — inicializa módulo de obras ──────────────
+            if (typeof OBRA !== 'undefined') {
+                OBRA.init().catch(e => console.warn('[K11 OBRA] init falhou:', e.message));
+            }
 
             APP._serverLog('info', 'FRONTEND', 'K11 OMNI carregado com sucesso', {
                 produtos:   APP.db.produtos.length,
@@ -471,7 +487,10 @@ const APP = {
         }
         const stage = document.getElementById('stage');
         if (!stage || !APP.views[v]) return;
-        const arg = typeof param === 'string' ? param : undefined;
+        // Suporta: string, objeto (para views com parâmetros como obraMateriaisFase), ou nav-button
+        const arg = (param && !param.classList)
+            ? (typeof param === 'string' ? param : param)
+            : undefined;
         stage.innerHTML = APP.views[v](arg);
         window.scrollTo({ top: 0, behavior: 'instant' });
         if (v === 'operacional') setTimeout(() => APP._setupSwipeFila(), 50);
@@ -491,22 +510,46 @@ const APP = {
 
         try { sessionStorage.setItem('k11_mode', next); } catch {}
 
-        // Atualiza variável global e classe do body
         window.K11_MODE = next;
         document.body.classList.toggle('mode-lite', next === 'lite');
 
-        // Atualiza o badge
+        // Atualiza badges
         const badgeEl = document.getElementById('mode-badge-header');
         if (badgeEl) {
             badgeEl.className = `mode-badge ${next}`;
             badgeEl.textContent = next === 'lite' ? '⚡ LITE' : '🧠 ULTRA';
         }
 
-        // Ajusta a view padrão
-        window._K11_DEFAULT_VIEW = next === 'lite' ? 'estoque' : 'dash';
+        // ── EFEITOS REAIS DO MODO LITE ─────────────────────────
+        if (next === 'lite') {
+            // 1. Desconecta streams SSE pesados
+            if (typeof K11Live !== 'undefined') K11Live.disconnect?.();
 
-        // Toast + navega pra view padrão do novo modo
-        APP.ui.toast(`Modo ${next.toUpperCase()} ativado`, 'info');
+            // 2. Desativa float AI
+            const fab = document.getElementById('k11-float-fab');
+            if (fab) fab.style.display = 'none';
+
+            // 3. Reduz polling do live panel
+            window._K11_LITE_MODE = true;
+
+            // 4. View padrão: estoque (mais leve, sem chart.js)
+            window._K11_DEFAULT_VIEW = 'estoque';
+
+            APP.ui.toast('Modo LITE: streams desativados, bateria econômica', 'info');
+        } else {
+            // 1. Reconecta streams
+            if (typeof K11Live !== 'undefined') K11Live.init?.();
+
+            // 2. Reativa float AI
+            const fab = document.getElementById('k11-float-fab');
+            if (fab) fab.style.display = '';
+
+            window._K11_LITE_MODE = false;
+            window._K11_DEFAULT_VIEW = 'dash';
+
+            APP.ui.toast('Modo ULTRA: IA e streams ativos', 'success');
+        }
+
         APP.view(window._K11_DEFAULT_VIEW);
     },
 

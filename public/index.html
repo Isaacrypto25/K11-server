@@ -5,30 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#090A0F">
+    <meta name="theme-color" content="#05060c">
     <title>K11 OMNI ELITE</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
     <link rel="manifest" href="manifest.json">
-    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" href="favicon.png">
     <style>
         #k11-forgot-fallback {
-            display: none;
-            position: fixed;
-            bottom: 28px;
-            left: 0; right: 0;
-            text-align: center;
-            z-index: 99999;
+            display: none; position: fixed; bottom: 28px;
+            left: 0; right: 0; text-align: center; z-index: 99999;
         }
         #k11-forgot-fallback button {
-            background: none;
-            border: none;
-            color: #6B7280;
-            font-size: 13px;
-            font-family: 'Inter', sans-serif;
-            cursor: pointer;
-            padding: 14px 32px;
+            background: none; border: none; color: #5A6480;
+            font-size: 13px; font-family: 'Inter', sans-serif;
+            cursor: pointer; padding: 14px 32px;
             -webkit-tap-highlight-color: transparent;
             touch-action: manipulation;
         }
@@ -36,35 +29,41 @@
     </style>
 </head>
 <body>
-
     <div id="k11-auth-root"></div>
 
-    <script src="k11-config.js?v=1772395000"></script>
-    <script src="k11-auth-ui.js?v=1772395000"></script>
+    <div id="k11-forgot-fallback">
+        <button id="btn-forgot-fixed">Esqueci minha senha</button>
+    </div>
+
+    <script src="k11-config.js?v=2"></script>
+    <script src="k11-utils.js?v=2"></script>
+    <script src="k11-auth-ui.js?v=2"></script>
 
     <script>
         (function() {
-            var fallback = document.getElementById('k11-forgot-fallback');
-            var btn      = document.getElementById('btn-forgot-fixed');
+            const fallback = document.getElementById('k11-forgot-fallback');
+            const btn      = document.getElementById('btn-forgot-fixed');
+            if (!fallback || !btn) return;
 
             function goForgot(e) {
                 if (e) e.preventDefault();
                 K11AuthUI.showForgot();
             }
-
             btn.addEventListener('click', goForgot);
             btn.addEventListener('touchend', goForgot);
 
             function sync() {
-                var onLogin = !!document.getElementById('btn-login');
+                const onLogin = !!document.getElementById('btn-login');
                 fallback.style.display = onLogin ? 'block' : 'none';
             }
-
-            var observer = new MutationObserver(sync);
+            const observer = new MutationObserver(sync);
             observer.observe(document.body, { childList: true, subtree: true });
             setTimeout(sync, 500);
         })();
     </script>
+
+    <!-- MODAL GLOBAL K11 — usado por verPedido, alertas, etc. -->
+    <div id="k11-modal" style="display:none;position:fixed;inset:0;z-index:9999"></div>
 
 </body>
 </html>

@@ -858,3 +858,4 @@ const K11Brain = (() => {
     if (document.readyState === 'complete') setTimeout(_bind, 100);
     else window.addEventListener('load', () => setTimeout(_bind, 100), { once: true });
 })();
+window.K11Brain = K11Brain;

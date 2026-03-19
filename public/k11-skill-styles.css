@@ -1,0 +1,677 @@
+/**
+ * K11 SKILL SYSTEM — STYLES (CSS)
+ * ═════════════════════════════════════════════════════════════════
+ * Estilos para perfis, habilidades, missões e componentes visuais
+ * 
+ * Adicione este arquivo ao seu HTML:
+ * <link rel="stylesheet" href="/k11-skill-styles.css">
+ */
+
+:root {
+    --k11-primary: #667eea;
+    --k11-secondary: #764ba2;
+    --k11-executor: #FF6B6B;
+    --k11-analyst: #4ECDC4;
+    --k11-diplomat: #FFE66D;
+    --k11-creator: #95E1D3;
+    --k11-success: #2ecc71;
+    --k11-warning: #f39c12;
+    --k11-danger: #e74c3c;
+    --k11-bg-light: #f8f9fa;
+    --k11-bg-dark: #2c3e50;
+    --k11-text-primary: #2c3e50;
+    --k11-text-muted: #7f8c8d;
+    --k11-border: #ecf0f1;
+    --k11-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    --k11-shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+/* ── PROFILE CONTAINER ──────────────────────────────────────────── */
+
+.k11-profile-container {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: var(--k11-shadow-lg);
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+.k11-profile-header {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 2px solid var(--k11-border);
+}
+
+.k11-profile-avatar {
+    position: relative;
+    width: 120px;
+    height: 120px;
+    background: linear-gradient(135deg, var(--k11-primary) 0%, var(--k11-secondary) 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: var(--k11-shadow-lg);
+}
+
+.k11-profile-level {
+    font-size: 48px;
+    font-weight: bold;
+    color: white;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.k11-profile-info {
+    flex: 1;
+    padding-top: 8px;
+}
+
+.k11-profile-name {
+    margin: 0 0 12px 0;
+    font-size: 24px;
+    font-weight: bold;
+    color: var(--k11-text-primary);
+}
+
+.k11-profile-archetype {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.k11-arch-icon {
+    font-size: 24px;
+}
+
+.k11-arch-name {
+    color: var(--k11-text-primary);
+}
+
+.k11-profile-xp {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.k11-xp-bar {
+    width: 300px;
+    height: 8px;
+    background: var(--k11-border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.k11-xp-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--k11-primary) 0%, var(--k11-secondary) 100%);
+    transition: width 0.5s ease;
+}
+
+.k11-xp-text {
+    font-size: 12px;
+    color: var(--k11-text-muted);
+    font-weight: 500;
+}
+
+/* ── RADAR CHART ────────────────────────────────────────────────── */
+
+.k11-profile-radar {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 40px 20px;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+    border-radius: 12px;
+    margin: 32px 0;
+    min-height: 350px;
+}
+
+#k11-radar-chart {
+    width: 100%;
+    max-width: 350px;
+    height: 350px;
+}
+
+/* ── ATTRIBUTES GRID ────────────────────────────────────────────── */
+
+.k11-profile-attributes {
+    margin: 32px 0;
+}
+
+.k11-profile-attributes h4 {
+    margin: 0 0 24px 0;
+    font-size: 18px;
+    font-weight: bold;
+    color: var(--k11-text-primary);
+}
+
+.k11-attributes-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 24px;
+}
+
+.k11-attr-section {
+    background: var(--k11-bg-light);
+    border-left: 4px solid var(--k11-executor);
+    border-radius: 8px;
+    padding: 16px;
+    transition: all 0.3s ease;
+}
+
+.k11-attr-section:hover {
+    box-shadow: var(--k11-shadow);
+}
+
+.k11-attr-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.k11-attr-icon {
+    font-size: 20px;
+}
+
+.k11-attr-category {
+    font-weight: bold;
+    color: var(--k11-text-primary);
+    font-size: 14px;
+}
+
+.k11-attr-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.k11-attr-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 12px;
+    align-items: center;
+}
+
+.k11-attr-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--k11-text-primary);
+    min-width: 70px;
+}
+
+.k11-attr-bar {
+    height: 6px;
+    background: var(--k11-border);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.k11-attr-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--k11-primary) 0%, var(--k11-secondary) 100%);
+    transition: width 0.5s ease;
+}
+
+.k11-attr-value {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--k11-text-muted);
+    text-align: right;
+    min-width: 50px;
+}
+
+/* ── SPECIALIZATIONS ────────────────────────────────────────────── */
+
+.k11-profile-specializations {
+    margin: 32px 0;
+}
+
+.k11-profile-specializations h4 {
+    margin: 0 0 16px 0;
+    font-size: 18px;
+    font-weight: bold;
+    color: var(--k11-text-primary);
+}
+
+.k11-spec-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.k11-spec-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: white;
+    border-left: 3px solid var(--k11-primary);
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.k11-spec-icon {
+    font-size: 18px;
+}
+
+.k11-spec-name {
+    color: var(--k11-text-primary);
+}
+
+.k11-spec-badge {
+    color: var(--k11-success);
+    font-weight: bold;
+}
+
+/* ── BADGES ─────────────────────────────────────────────────────── */
+
+.k11-profile-badges {
+    margin: 32px 0;
+}
+
+.k11-profile-badges h4 {
+    margin: 0 0 16px 0;
+    font-size: 18px;
+    font-weight: bold;
+    color: var(--k11-text-primary);
+}
+
+.k11-badges-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.k11-badge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 16px;
+    background: linear-gradient(135deg, var(--k11-warning) 0%, var(--k11-danger) 100%);
+    border-radius: 12px;
+    color: white;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    min-width: 100px;
+}
+
+.k11-badge:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--k11-shadow-lg);
+}
+
+.k11-badge-icon {
+    font-size: 32px;
+}
+
+.k11-badge-label {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* ── EMPTY STATE ────────────────────────────────────────────────── */
+
+.k11-empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--k11-text-muted);
+    font-size: 14px;
+}
+
+/* ── MODAL ──────────────────────────────────────────────────────── */
+
+.k11-profile-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.k11-profile-modal {
+    background: white;
+    border-radius: 16px;
+    width: 90%;
+    max-width: 900px;
+    max-height: 90vh;
+    overflow-y: auto;
+    position: relative;
+    box-shadow: var(--k11-shadow-lg);
+    animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.k11-modal-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    cursor: pointer;
+    color: var(--k11-text-muted);
+    z-index: 10;
+    transition: color 0.3s ease;
+}
+
+.k11-modal-close:hover {
+    color: var(--k11-text-primary);
+}
+
+/* ── TABS ───────────────────────────────────────────────────────── */
+
+.k11-modal-tabs {
+    display: flex;
+    border-bottom: 2px solid var(--k11-border);
+    background: var(--k11-bg-light);
+    padding: 0 24px;
+}
+
+.k11-tab-btn {
+    background: none;
+    border: none;
+    padding: 16px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    color: var(--k11-text-muted);
+    position: relative;
+    transition: color 0.3s ease;
+}
+
+.k11-tab-btn:hover {
+    color: var(--k11-text-primary);
+}
+
+.k11-tab-btn.active {
+    color: var(--k11-primary);
+}
+
+.k11-tab-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--k11-primary);
+}
+
+.k11-tab-content {
+    display: none;
+    padding: 24px;
+}
+
+.k11-tab-content.active {
+    display: block;
+}
+
+/* ── TIMELINE ───────────────────────────────────────────────────── */
+
+.k11-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.k11-timeline-item {
+    display: flex;
+    gap: 16px;
+    position: relative;
+}
+
+.k11-timeline-marker {
+    width: 12px;
+    height: 12px;
+    background: var(--k11-primary);
+    border-radius: 50%;
+    margin-top: 4px;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+}
+
+.k11-timeline-item:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 20px;
+    width: 2px;
+    height: calc(100% + 8px);
+    background: var(--k11-border);
+}
+
+.k11-timeline-content {
+    flex: 1;
+    background: var(--k11-bg-light);
+    padding: 16px;
+    border-radius: 8px;
+}
+
+.k11-timeline-attribute {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.k11-timeline-attribute strong {
+    color: var(--k11-text-primary);
+    font-size: 14px;
+}
+
+.k11-timeline-xp {
+    background: var(--k11-success);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.k11-timeline-progress {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+    font-size: 12px;
+}
+
+.k11-prog-bar {
+    flex: 1;
+    height: 4px;
+    background: var(--k11-border);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.k11-prog-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--k11-primary) 0%, var(--k11-secondary) 100%);
+}
+
+.k11-prog-value {
+    color: var(--k11-text-muted);
+    font-weight: 600;
+    min-width: 50px;
+}
+
+.k11-timeline-date {
+    font-size: 11px;
+    color: var(--k11-text-muted);
+}
+
+/* ── MISSION CARDS ──────────────────────────────────────────────── */
+
+.k11-mission-card {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: var(--k11-shadow);
+    transition: all 0.3s ease;
+    cursor: pointer;
+    border-left: 4px solid var(--k11-primary);
+}
+
+.k11-mission-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--k11-shadow-lg);
+}
+
+.k11-mission-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    margin-bottom: 12px;
+}
+
+.k11-mission-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: var(--k11-text-primary);
+    margin: 0;
+}
+
+.k11-mission-type {
+    display: inline-block;
+    padding: 4px 12px;
+    background: var(--k11-bg-light);
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--k11-primary);
+}
+
+.k11-mission-description {
+    font-size: 14px;
+    color: var(--k11-text-muted);
+    margin: 12px 0;
+    line-height: 1.5;
+}
+
+.k11-mission-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--k11-border);
+}
+
+.k11-mission-xp {
+    font-size: 14px;
+    font-weight: bold;
+    color: var(--k11-success);
+}
+
+.k11-mission-affinity {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--k11-primary);
+}
+
+/* ── RESPONSIVE ────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+    .k11-profile-header {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+
+    .k11-xp-bar {
+        width: 100%;
+    }
+
+    .k11-attributes-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .k11-profile-modal {
+        width: 95%;
+        max-height: 95vh;
+    }
+
+    .k11-modal-tabs {
+        padding: 0 16px;
+    }
+
+    .k11-tab-btn {
+        padding: 12px 16px;
+        font-size: 12px;
+    }
+
+    .k11-tab-content {
+        padding: 16px;
+    }
+}
+
+/* ── UTILITIES ──────────────────────────────────────────────────── */
+
+.k11-text-center {
+    text-align: center;
+}
+
+.k11-mb-1 {
+    margin-bottom: 8px;
+}
+
+.k11-mb-2 {
+    margin-bottom: 16px;
+}
+
+.k11-mb-3 {
+    margin-bottom: 24px;
+}
+
+.k11-mt-2 {
+    margin-top: 16px;
+}
+
+.k11-hidden {
+    display: none;
+}
+
+.k11-fadeIn {
+    animation: fadeIn 0.3s ease;
+}
