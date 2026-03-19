@@ -204,10 +204,10 @@ function getCapacidade(desc) {
 }
 
 // ── EVENT BUS — pub/sub global mínimo ────────────────────────
-// [FIX A] EventBus não estava definido em nenhum arquivo.
-// k11-processors.js chamava EventBus.emit() sem guard → ReferenceError
-// dentro de processarEstoque() → capturado pelo catch do init() → toast de erro.
-const EventBus = (() => {
+// [FIX A v2] window.EventBus garante visibilidade global em todos os browsers.
+// No Safari iOS, const/let no topo de script NÃO vira window property,
+// então outros scripts não conseguem acessar. window.EventBus resolve isso.
+window.EventBus = (() => {
     const _listeners = {};
     return {
         on(event, fn) {
