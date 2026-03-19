@@ -1,0 +1,111 @@
+# ============================================================
+# ARQUIVO: .env
+# Cole isto na raiz do seu K11-server e preencha os valores
+# ============================================================
+
+# NODE
+NODE_ENV=development
+PORT=3000
+
+# SUPABASE (preencha com seus dados)
+SUPABASE_URL=https://seu-projeto.supabase.co
+SUPABASE_ANON_KEY=sua-chave-publica-aqui
+SUPABASE_SERVICE_KEY=sua-chave-secreta-aqui
+
+# SUPABASE AUTH
+SUPABASE_JWT_SECRET=sua-jwt-secret-aqui
+
+# ANTHROPIC (Claude API)
+ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxx
+
+# GROQ (Faster inference, optional)
+GROQ_API_KEY=gsk-xxxxxxxxxxxxx
+
+# OBRAMAX API (integração real, quando tiver)
+OBRAMAX_API_KEY=xxxxxxxxxxxxx
+OBRAMAX_API_URL=https://api.obramax.com.br
+OBRAMAX_MOCK=true
+
+# EMAIL (nodemailer)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=seu-email@gmail.com
+SMTP_PASS=sua-senha-app-especifica
+
+# GOOGLE (para OAuth, se usar)
+GOOGLE_CLIENT_ID=xxxxxxxxxxxxx
+GOOGLE_CLIENT_SECRET=xxxxxxxxxxxxx
+
+# AWS S3 (para fotos/uploads)
+AWS_ACCESS_KEY_ID=xxxxxxxxxxxxx
+AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxxx
+AWS_S3_BUCKET=seu-bucket
+AWS_S3_REGION=us-east-1
+
+# SENTRY (error tracking)
+SENTRY_DSN=https://xxxxxxxxxxxxx
+
+# JWT
+JWT_SECRET=sua-jwt-secret-supersecreto-aqui
+JWT_EXPIRE=7d
+
+# CORS
+CORS_ORIGIN=http://localhost:5173,http://localhost:3000,https://seu-dominio.com
+
+# RATE LIMIT
+RATE_LIMIT_WINDOW=15
+RATE_LIMIT_MAX=100
+
+# LOG
+LOG_LEVEL=info
+
+# ============================================================
+# HOW TO GET THESE KEYS
+# ============================================================
+
+# SUPABASE:
+# 1. Vá para https://supabase.com
+# 2. Crie um projeto
+# 3. Settings > API > anon (public)
+# 4. Cole em SUPABASE_ANON_KEY
+# 5. Project > service_role (secret)
+# 6. Cole em SUPABASE_SERVICE_KEY
+
+# ANTHROPIC:
+# 1. Vá para https://console.anthropic.com
+# 2. API Keys > Create Key
+# 3. Cole em ANTHROPIC_API_KEY
+
+# GROQ (Optional):
+# 1. Vá para https://console.groq.com
+# 2. Create API Key
+# 3. Cole em GROQ_API_KEY
+
+# GMAIL SMTP:
+# 1. Vá para myaccount.google.com/apppasswords
+# 2. Crie senha de app (não a senha do Gmail)
+# 3. Cole em SMTP_USER e SMTP_PASS
+
+# AWS S3:
+# 1. Crie conta em https://aws.amazon.com
+# 2. IAM > Create User
+# 3. Adicione permissão S3FullAccess
+# 4. Crie Access Keys
+# 5. Cole em AWS_*
+
+# SENTRY:
+# 1. Vá para https://sentry.io
+# 2. Create Project > Node.js
+# 3. Copie o DSN
+# 4. Cole em SENTRY_DSN
+
+# WEBHOOKS DE ALERTAS
+WHATSAPP_TOKEN=
+WHATSAPP_PHONE_ID=
+WHATSAPP_TO=5521999999999
+TEAMS_WEBHOOK_URL=https://outlook.office.com/webhook/...
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+ALERT_THRESHOLD_SCORE=40
+
+# SERPAPI (Google Shopping scraping — opcional)
+SERPAPI_KEY=

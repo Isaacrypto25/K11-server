@@ -71,8 +71,22 @@ const supervisor_svc = require('./services/ai-supervisor'); // serviço interno 
 const auth           = require('./middleware/server-auth');
 const clienteAuth    = require('./middleware/k11-cliente-auth');
 const clienteRoutes  = require('./routes/k11-cliente-routes');
+const skillsRoutes   = require('./routes/skills-missions');
 const register       = require('./middleware/server-register');
 const requestTracker = require('./middleware/request-tracker');
+const auditLog       = require('./middleware/audit-log');
+
+// ── NOVAS ROTAS v2.1 ──────────────────────────────────────────
+const notificationsRoutes    = require('./routes/notifications');
+const photosRoutes           = require('./routes/photos');
+const orcApprovalRoutes      = require('./routes/orcamento-approval');
+const webhooksModule         = require('./routes/webhooks');
+const reportsRoutes          = require('./routes/reports');
+const { router: npsRouter, triggerNPSAfterPhase } = require('./routes/nps');
+
+// ── SENTRY (error tracking) ───────────────────────────────────
+const sentry = require('./services/sentry');
+sentry.init();
 
 // ── ROTAS INTERNAS ────────────────────────────────────────────
 const dataRoutes   = require('./routes/data');
@@ -129,13 +143,26 @@ app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
 // ── RATE LIMITING ─────────────────────────────────────────────
+// Rate limit por usuário JWT (não por IP — evita conflito em redes corporativas com NAT)
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10),
-  max:      parseInt(process.env.RATE_LIMIT_MAX       || '120', 10),
+  max:      parseInt(process.env.RATE_LIMIT_MAX       || '200', 10),
   standardHeaders: true,
   legacyHeaders:   false,
+  keyGenerator: (req) => {
+    // Tenta extrair userId do JWT; fallback para IP
+    try {
+      const token = req.headers['authorization']?.slice(7) || req.query?.token;
+      if (token) {
+        const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+        return payload.re || payload.email || req.ip;
+      }
+    } catch (_) {}
+    return req.ip;
+  },
   handler: (req, res) => {
-    logger.warn('RATE-LIMIT', `Limite excedido`, { ip: req.ip, path: req.path });
+    const uid = req.user?.re || req.user?.email || req.ip;
+    logger.warn('RATE-LIMIT', `Limite excedido`, { uid, path: req.path });
     res.status(429).json({ ok: false, error: 'Muitas requisições. Tente em 1 minuto.' });
   },
 });
@@ -155,6 +182,7 @@ app.use(morgan((tokens, req, res) => {
 
 // ── REQUEST TRACKER ───────────────────────────────────────────
 app.use(requestTracker);
+app.use(auditLog);
 
 
 // ─────────────────────────────────────────────────────────────
@@ -264,6 +292,13 @@ app.post('/api/ai/v3/anomaly', auth.requireAuth, auth.requireOperacional, async 
   try {
     const { pdvId, pdvName, metric, currentValue, expectedValue, unit } = req.body;
     const result = await aiCore.analyzeAnomaly(pdvId, pdvName, metric, currentValue, expectedValue, unit);
+    // Disparar webhook se crítico
+    if (result?.severity === 'critical' || result?.severity === 'high') {
+        try {
+            const wh = require('./routes/webhooks');
+            wh.dispatch({ type: 'anomalia', message: result.recommendation || result.cause, severity: result.severity, pdvName });
+        } catch (_) {}
+    }
     res.json({ ok: true, data: result });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -572,6 +607,22 @@ app.post('/api/decision/run-cycle', auth.requireAuth, auth.requireOperacional, (
             const sb = _sb();
             if (sb) {
                 await sb.from('phases').update({ progress_percent:pct, status }).eq('id',req.params.phase_id);
+            }
+            // Trigger NPS quando fase é concluída
+            if (pct === 100) {
+                try {
+                    const sb2 = _sb();
+                    if (sb2) {
+                        const { data: fase } = await sb2.from('phases').select('project_id').eq('id', req.params.phase_id).single();
+                        if (fase?.project_id) {
+                            const { data: obra } = await sb2.from('obras').select('cliente_email').eq('id', fase.project_id).single();
+                            if (obra?.cliente_email) {
+                                const { triggerNPSAfterPhase } = require('./routes/nps');
+                                triggerNPSAfterPhase(fase.project_id, req.params.phase_id, obra.cliente_email).catch(()=>{});
+                            }
+                        }
+                    }
+                } catch (_) {}
             }
             return res.json({ success:true, status });
         } catch(e) { res.status(500).json({ error:e.message }); }
@@ -912,6 +963,14 @@ app.use('/api/auth/cliente', clienteAuth);
 // API DO CLIENTE — rotas REST do portal (requer role: cliente)
 // ─────────────────────────────────────────────────────────────
 app.use('/api/cliente', auth.requireAuth, auth.requireCliente, clienteRoutes);
+app.use('/api/skills',   auth.requireAuth, auth.requireOperacional, skillsRoutes);
+app.use('/api/missions',      auth.requireAuth, auth.requireOperacional, skillsRoutes);
+app.use('/api/notifications', auth.requireAuth, notificationsRoutes);
+app.use('/api/photos',        auth.requireAuth, photosRoutes);
+app.use('/api/orcamento',     auth.requireAuth, orcApprovalRoutes);
+app.use('/api/webhooks',      auth.requireAuth, auth.requireOperacional, webhooksModule.router);
+app.use('/api/reports',       auth.requireAuth, reportsRoutes);
+app.use('/api/nps',           auth.requireAuth, npsRouter);
 
 // ─────────────────────────────────────────────────────────────
 // ARQUIVOS ESTÁTICOS E 404
