@@ -41,10 +41,10 @@ const K11PriceIntel = (() => {
   // ── SSE ────────────────────────────────────────────────────────────
 
   function _connectSSE() {
-    const token = sessionStorage.getItem('k11_jwt');
+    const token = (typeof K11Auth !== 'undefined' ? K11Auth.getToken() : null) || sessionStorage.getItem('k11_jwt');
     if (!token) return;
 
-    const url = `${window.location.origin}/api/price-intel/stream?token=${token}`;
+    const url = `${window.location.origin}/api/price-intel/stream?token=${encodeURIComponent(token)}`;
     state.sse = new EventSource(url);
 
     state.sse.addEventListener('connected', () => {
@@ -899,7 +899,7 @@ const K11PriceIntel = (() => {
     if (!state.selectedProd) {
       let html = `<div class="k11-pi-section-label">Selecione um produto</div>`;
       state.priceMap.forEach(p => {
-        html += `<button class="k11-pi-hist-prod-btn" onclick="K11PriceIntel.loadHistory('${p.productId}', '${p.productName.replace(/'/g,'\\'')}')">
+        html += `<button class="k11-pi-hist-prod-btn" data-product-id="${p.productId}" data-product-name="${p.productName}">
           ${p.productName}
         </button>`;
       });
@@ -1053,7 +1053,7 @@ const K11PriceIntel = (() => {
   }
 
   async function forceScan() {
-    const token = sessionStorage.getItem('k11_jwt');
+    const token = (typeof K11Auth !== 'undefined' ? K11Auth.getToken() : null) || sessionStorage.getItem('k11_jwt');
     if (!token) return;
 
     state.scanActive = true;
@@ -1078,7 +1078,7 @@ const K11PriceIntel = (() => {
   }
 
   async function loadHistory(productId, productName) {
-    const token = sessionStorage.getItem('k11_jwt');
+    const token = (typeof K11Auth !== 'undefined' ? K11Auth.getToken() : null) || sessionStorage.getItem('k11_jwt');
     if (!token) return;
 
     state.selectedProd = productId;
@@ -1106,7 +1106,8 @@ const K11PriceIntel = (() => {
     _renderActiveTab();
   }
 
-  return { init, togglePanel, switchTab, toggleCard, forceScan, loadHistory, clearHistory };
+  function open() { const panel = document.getElementById('k11-pi-panel'); if (panel && !panel.classList.contains('open')) togglePanel(); }
+  return { init, open, togglePanel, switchTab, toggleCard, forceScan, loadHistory, clearHistory };
 })();
 
 // Auto-init
