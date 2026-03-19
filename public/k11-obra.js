@@ -19,8 +19,7 @@
 
 'use strict';
 
-// Módulo de UI de obras — estende window.OBRA sem redeclarar a constante
-const _ObraUIModule = (() => {
+const OBRA = (() => {
 
     // ── ESTADO ──────────────────────────────────────────────────
     const state = {
@@ -428,19 +427,4 @@ const _ObraUIModule = (() => {
 
 })();
 
-// Mescla os métodos de UI no objeto OBRA já existente (criado por k11-obra-actions.js)
-// OBRA pode ser uma const global (não window.OBRA) — verificar ambos
-const _obraTarget = (typeof OBRA !== 'undefined' && OBRA) || (typeof window.OBRA !== 'undefined' && window.OBRA) || null;
-
-if (_obraTarget) {
-    Object.assign(_obraTarget, _ObraUIModule);
-    // Mesclar state sem sobrescrever keys existentes do actions
-    if (_obraTarget.state && _ObraUIModule.state) {
-        Object.assign(_obraTarget.state, _ObraUIModule.state);
-    }
-} else {
-    // Fallback: nenhum OBRA encontrado — expor como window.OBRA
-    window.OBRA = _ObraUIModule;
-}
-
-console.log('[K11 OBRA] ✅ Módulo de obras iniciado');
+window.OBRA = OBRA;

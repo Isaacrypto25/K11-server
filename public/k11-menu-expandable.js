@@ -238,5 +238,5 @@ const K11ExpandableMenu = (() => {
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', K11ExpandableMenu.init);
 } else {
-    K11ExpandableMenu.init();
+    G11ExpandableMenu.init();
 }

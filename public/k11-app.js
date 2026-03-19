@@ -510,46 +510,22 @@ const APP = {
 
         try { sessionStorage.setItem('k11_mode', next); } catch {}
 
+        // Atualiza variável global e classe do body
         window.K11_MODE = next;
         document.body.classList.toggle('mode-lite', next === 'lite');
 
-        // Atualiza badges
+        // Atualiza o badge
         const badgeEl = document.getElementById('mode-badge-header');
         if (badgeEl) {
             badgeEl.className = `mode-badge ${next}`;
             badgeEl.textContent = next === 'lite' ? '⚡ LITE' : '🧠 ULTRA';
         }
 
-        // ── EFEITOS REAIS DO MODO LITE ─────────────────────────
-        if (next === 'lite') {
-            // 1. Desconecta streams SSE pesados
-            if (typeof K11Live !== 'undefined') K11Live.disconnect?.();
+        // Ajusta a view padrão
+        window._K11_DEFAULT_VIEW = next === 'lite' ? 'estoque' : 'dash';
 
-            // 2. Desativa float AI
-            const fab = document.getElementById('k11-float-fab');
-            if (fab) fab.style.display = 'none';
-
-            // 3. Reduz polling do live panel
-            window._K11_LITE_MODE = true;
-
-            // 4. View padrão: estoque (mais leve, sem chart.js)
-            window._K11_DEFAULT_VIEW = 'estoque';
-
-            APP.ui.toast('Modo LITE: streams desativados, bateria econômica', 'info');
-        } else {
-            // 1. Reconecta streams
-            if (typeof K11Live !== 'undefined') K11Live.init?.();
-
-            // 2. Reativa float AI
-            const fab = document.getElementById('k11-float-fab');
-            if (fab) fab.style.display = '';
-
-            window._K11_LITE_MODE = false;
-            window._K11_DEFAULT_VIEW = 'dash';
-
-            APP.ui.toast('Modo ULTRA: IA e streams ativos', 'success');
-        }
-
+        // Toast + navega pra view padrão do novo modo
+        APP.ui.toast(`Modo ${next.toUpperCase()} ativado`, 'info');
         APP.view(window._K11_DEFAULT_VIEW);
     },
 

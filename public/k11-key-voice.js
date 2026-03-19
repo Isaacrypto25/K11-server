@@ -577,4 +577,3 @@ const K11KeyVoice = (() => {
     return { speak, stop, isReady, onStart, onEnd, openPanel, closePanel, getLog, getApiKey, getVoiceId };
 
 })();
-window.K11KeyVoice = K11KeyVoice;
