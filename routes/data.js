@@ -12,15 +12,36 @@ const router    = express.Router();
 const datastore = require('../services/datastore');
 const logger    = require('../services/logger');
 
-const ALLOWED_DATASETS = ['tarefas', 'pdvs', 'produtos', 'usuarios', 'vendas', 'estoque', 'alertas', 'logs_acoes'];
+// [FIX 5] Mapa de chave frontend → nome real da tabela no Supabase.
+// Antes: ALLOWED_DATASETS retornava nomes de tabela diretamente (pdvs, pdv_anterior…)
+// causando mismatch com o que k11-app.js espera (pdv, pdvAnterior, pdvmesquita…),
+// resultando em allData truthy mas com todos os campos undefined → crash no init().
+const DATASET_MAP = {
+    produtos:       'produtos',
+    auditoria:      'auditoria',
+    movimento:      'movimento',
+    pdv:            'pdvs',
+    pdvAnterior:    'pdv_anterior',
+    tarefas:        'tarefas',
+    pdvmesquita:    'pdv_mesquita',
+    pdvjacarepagua: 'pdv_jacarepagua',
+    pdvbenfica:     'pdv_benfica',
+    fornecedor:     'fornecedor',
+};
+
+// Lista de tabelas permitidas para GET /:dataset e PUT /:dataset/:id
+const ALLOWED_DATASETS = [...new Set(Object.values(DATASET_MAP))];
 
 // GET /api/data/all
 router.get('/all', async (req, res) => {
     try {
         const result = {};
-        for (const ds of ALLOWED_DATASETS) {
-            result[ds] = await datastore.readDataset(ds);
-        }
+        // Busca em paralelo e expõe com as chaves que o frontend espera
+        await Promise.all(
+            Object.entries(DATASET_MAP).map(async ([frontendKey, tableName]) => {
+                result[frontendKey] = await datastore.readDataset(tableName);
+            })
+        );
         res.json({ ok: true, data: result, ts: new Date().toISOString() });
     } catch (e) {
         logger.error('DATA', `Erro ao buscar todos os datasets: ${e.message}`);
