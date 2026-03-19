@@ -1,584 +1,264 @@
-/**
- * ╔══════════════════════════════════════════════════════════════════════╗
- * ║   K11 AI CORE v4.0 — Cérebro Central                                ║
- * ║                                                                       ║
- * ║   v4.0 — Melhorias sobre v3:                                         ║
- * ║   • Contexto comprimido ≤400 tokens (era ~1200 → overflow fixado)   ║
- * ║   • CoT removido: 2 chamadas → 1 chamada (latência −40%)            ║
- * ║   • max_tokens padrão 600 → 450                                      ║
- * ║   • Timeout 25s → 15s                                                ║
- * ║   • Histórico limitado a 3 últimas trocas truncadas                 ║
- * ║   • Memória persiste apenas insights relevantes (não tudo)          ║
- * ║   • Análise proativa a cada 10 min (era 15)                         ║
- * ║   • Alerta automático quando ≥5 SKUs em ruptura                     ║
- * ║   • Insight semanal toda segunda-feira                               ║
- * ╚══════════════════════════════════════════════════════════════════════╝
- */
-
 'use strict';
 
-const https = require('https');
+/**
+ * K11 OMNI ELITE — AI Core v3 (k11_ai_core)
+ * Cérebro central: chat com memória, CoT, alertas proativos, estratégias
+ *
+ * Expõe:
+ *   init(supabase, logger, options)
+ *   chat(message, context)        → { reply, reasoning, tokens }
+ *   generateStrategy(pdvData, opts)→ { strategy, actions, forecast }
+ *   analyzeAnomaly(...)           → { severity, cause, recommendation }
+ *   addSSEClient(res)
+ *   getProactiveAlerts()
+ *   getMemory(pdvId)
+ *   injectContext(key, value)
+ */
 
-const aiCore = (() => {
+const Anthropic = require('@anthropic-ai/sdk');
 
-    // ── ESTADO ──────────────────────────────────────────────────────────
-    const state = {
-        memory: {
-            pdvs:      new Map(),
-            operators: new Map(),
-            global: {
-                insights:  [],
-                decisions: [],
-                anomalies: [],
-                patterns:  [],
-                lastFullAnalysis: null,
-            },
-        },
+let _sb      = null;
+let _logger  = console;
+let _client  = null;
+let _context = {};
+const _memory  = {};          // pdvId → cache em RAM (espelho do Supabase)
+const _alerts  = [];          // fila de alertas proativos
+const _sseClients = new Set();
 
-        proactiveQueue: [],
+// ── MEMÓRIA PERSISTIDA ──────────────────────────────────────────
+async function _loadMemory(contextId) {
+    if (_memory[contextId]) return _memory[contextId]; // cache hit
+    if (!_sb) return [];
+    try {
+        const { data } = await _sb
+            .from('ai_conversations')
+            .select('role, content')
+            .eq('context_id', contextId)
+            .order('created_at', { ascending: true })
+            .limit(20);
+        _memory[contextId] = (data || []).map(r => ({ role: r.role, content: r.content }));
+        return _memory[contextId];
+    } catch { return []; }
+}
 
-        externalContext: {
-            priceIntel:     null,
-            decisionEngine: null,
-            healthScores:   null,
-        },
-
-        sseClients: new Set(),
-        supabase:   null,
-        logger:     null,
-
-        models: {
-            fast:    'llama-3.3-70b-versatile',
-            precise: 'llama-3.3-70b-versatile',
-        },
-
-        cycleInterval:      null,
-        analysisIntervalMs: 10 * 60 * 1000, // [v4] 10 min (era 15)
-    };
-
-    // ════════════════════════════════════════════════════════════════════
-    // INIT
-    // ════════════════════════════════════════════════════════════════════
-
-    function init(supabaseClient, logger, options = {}) {
-        state.supabase = supabaseClient;
-        state.logger   = logger;
-
-        if (options.analysisIntervalMs) state.analysisIntervalMs = options.analysisIntervalMs;
-
-        logger?.info('AI-CORE', '🧠 K11 AI Core v4 inicializando...');
-
-        _loadPersistedMemory().then(() => {
-            state.cycleInterval = setInterval(() => _runProactiveAnalysis(), state.analysisIntervalMs);
-            setTimeout(() => _runProactiveAnalysis(), 30000); // [v4] 30s (era 45s)
-            logger?.info('AI-CORE', '✅ AI Core v4 pronto');
-        });
-    }
-
-    // ════════════════════════════════════════════════════════════════════
-    // MEMÓRIA PERSISTENTE
-    // ════════════════════════════════════════════════════════════════════
-
-    async function _loadPersistedMemory() {
-        try {
-            const { data: insights } = await state.supabase
-                .from('ai_memory')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .limit(100);
-
-            if (insights?.length) {
-                for (const item of insights) {
-                    if (item.entity_type === 'pdv') {
-                        const mem = state.memory.pdvs.get(item.entity_id) || _newPDVMemory(item.entity_id);
-                        if (item.memory_type === 'insight') mem.insights.unshift(item.content);
-                        if (item.memory_type === 'pattern') mem.patterns.push(item.content);
-                        state.memory.pdvs.set(item.entity_id, mem);
-                    } else if (item.entity_type === 'global') {
-                        state.memory.global.insights.unshift(item.content);
-                    }
-                }
-                state.logger?.info('AI-CORE', `📚 Memória carregada: ${insights.length} registros`);
-            }
-        } catch (_) {}
-    }
-
-    async function _persistMemory(entityType, entityId, memoryType, content) {
-        try {
-            await state.supabase.from('ai_memory').insert({
-                entity_type: entityType,
-                entity_id:   entityId,
-                memory_type: memoryType,
-                content:     typeof content === 'string' ? content : JSON.stringify(content),
-            });
-        } catch (_) {}
-    }
-
-    function _newPDVMemory(pdvId) {
-        return {
-            pdvId,
-            insights:    [],
-            patterns:    [],
-            anomalies:   [],
-            lastScore:   null,
-            chatHistory: [],
-        };
-    }
-
-    // ════════════════════════════════════════════════════════════════════
-    // INJEÇÃO DE CONTEXTO EXTERNO
-    // ════════════════════════════════════════════════════════════════════
-
-    function injectContext(source, data) {
-        state.externalContext[source] = { data, injectedAt: new Date() };
-    }
-
-    // ════════════════════════════════════════════════════════════════════
-    // CHAT — v4: contexto comprimido, 1 chamada, histórico truncado
-    // ════════════════════════════════════════════════════════════════════
-
-    async function chat(userMessage, options = {}) {
-        const {
-            pdvId   = null,
-            userId  = null,
-            pdvData = null,
-            mode    = 'auto',
-        } = options;
-
-        const startTs = Date.now();
-        const intent  = _classifyIntent(userMessage);
-        const memory  = _buildMemoryContext(pdvId, userId, intent);
-
-        // [v4] Contexto comprimido ≤ 400 tokens
-        const context = _buildCompressedContext(pdvData, memory, intent);
-
-        // [v4] Sempre 1 chamada direta (CoT removido — estava causando overflow)
-        const response = await _chatDirect(userMessage, context, intent);
-
-        if (!response) {
-            return { text: 'Sistema temporariamente indisponível.', confidence: 'LOW', intent };
+async function _saveMessage(contextId, role, content, model) {
+    // Atualiza cache
+    if (!_memory[contextId]) _memory[contextId] = [];
+    _memory[contextId].push({ role, content });
+    if (_memory[contextId].length > 40) _memory[contextId] = _memory[contextId].slice(-40);
+    // Persiste
+    if (!_sb) return;
+    try {
+        await _sb.from('ai_conversations').insert({ context_id: contextId, role, content, model: model || null });
+        // Mantém só as 40 mais recentes no banco
+        const { data: old } = await _sb.from('ai_conversations')
+            .select('id').eq('context_id', contextId)
+            .order('created_at', { ascending: false }).range(40, 200);
+        if (old?.length) {
+            await _sb.from('ai_conversations').delete().in('id', old.map(r => r.id));
         }
+    } catch (_) {}
+}
 
-        _updateMemoryAfterChat(pdvId, userId, userMessage, response, intent);
+function _getClient() {
+    if (_client) return _client;
+    const key = process.env.ANTHROPIC_API_KEY;
+    if (!key) return null;
+    _client = new Anthropic({ apiKey: key });
+    return _client;
+}
 
-        const latencyMs = Date.now() - startTs;
-        state.logger?.info('AI-CORE', `💬 Chat v4`, { intent, latencyMs });
+function _broadcast(event, data) {
+    const payload = `data: ${JSON.stringify({ event, data, ts: new Date().toISOString() })}\n\n`;
+    for (const res of _sseClients) {
+        try { res.write(payload); } catch (_) { _sseClients.delete(res); }
+    }
+}
 
-        return {
-            text:       response.text,
-            confidence: response.confidence || 'MEDIUM',
-            intent,
-            latencyMs,
-        };
+/** Chat com memória por PDV e Chain-of-Thought */
+async function chat(message, { pdvId = 'global', userId, pdvData, mode = 'auto' } = {}) {
+    const client = _getClient();
+    if (!client) {
+        return { reply: 'ANTHROPIC_API_KEY não configurada.', reasoning: null, tokens: 0, source: 'fallback' };
     }
 
-    function _classifyIntent(message) {
-        const msg = message.toLowerCase();
-        if (/ruptura|zerado|sem estoque|faltando|acabou/.test(msg))       return 'STOCKOUT';
-        if (/preço|concorrente|mais barato|cobrar|valor/.test(msg))       return 'PRICING';
-        if (/meta|objetivo|bater|atingir|target/.test(msg))               return 'GOALS';
-        if (/venda|vender|aumentar|crescer|faturamento/.test(msg))        return 'SALES';
-        if (/fornecedor|pedido|repor|reposi|comprar/.test(msg))           return 'REPLENISHMENT';
-        if (/margem|lucro|rentabil|custo/.test(msg))                      return 'MARGIN';
-        if (/por que|causa|motivo|razão|analise|análise/.test(msg))       return 'ANALYSIS';
-        if (/o que fazer|recomend|sugere|como|estratégia/.test(msg))      return 'ACTION';
-        if (/previs|forecast|próxim|futuro|semana que vem/.test(msg))     return 'FORECAST';
-        if (/comparar|melhor pdv|ranking|quem mais/.test(msg))            return 'COMPARISON';
-        return 'GENERAL';
-    }
+    // Recupera/inicializa memória do PDV
+    const history = (await _loadMemory(pdvId)).slice(-10);
 
-    function _buildMemoryContext(pdvId, userId, intent) {
-        const ctx = { pdvHistory: [], globalInsights: [] };
-        if (pdvId) {
-            const pdvMem = state.memory.pdvs.get(pdvId);
-            if (pdvMem) {
-                ctx.pdvHistory  = pdvMem.insights.slice(0, 3); // [v4] era 5
-                ctx.pdvPatterns = pdvMem.patterns.slice(0, 2);
-                ctx.lastScore   = pdvMem.lastScore;
-                // [v4] Histórico de chat truncado: últimas 3 trocas, 100 chars cada
-                ctx.chatHistory = (pdvMem.chatHistory ?? [])
-                    .slice(-3)
-                    .map(h => ({ q: h.q.slice(0, 60), a: h.a.slice(0, 100) }));
-            }
-        }
-        ctx.globalInsights  = state.memory.global.insights.slice(0, 2); // [v4] era 3
-        ctx.recentDecisions = state.memory.global.decisions.slice(0, 2);
-        return ctx;
-    }
+    const systemPrompt = `Você é o K11 AI Core v3, o cérebro operacional do K11 OMNI ELITE.
+Você analisa PDVs (pontos de venda), identifica padrões, gera estratégias e recomendações.
 
-    // [v4] Contexto comprimido — máx ~400 tokens (vs ~1200 antes)
-    function _buildCompressedContext(pdvData, memory, intent) {
-        const parts = [];
+Contexto atual do sistema:
+${JSON.stringify(_context, null, 2)}
 
-        // PDV: só campos essenciais
-        if (pdvData) {
-            const metaPct = pdvData.meta_dia > 0
-                ? Math.round((pdvData.vendas_hoje / pdvData.meta_dia) * 100) : '?';
-            parts.push(
-                `PDV:${pdvData.nome || '?'} | vendas:R$${Math.round(pdvData.vendas_hoje || 0)}` +
-                ` | meta:${metaPct}% | margem:${pdvData.margem_operacional?.toFixed(1) || '?'}%` +
-                ` | rupturas:${pdvData.rupturas || 0}`
-            );
-        }
+${pdvData ? `Dados do PDV atual (${pdvId}):\n${JSON.stringify(pdvData, null, 2)}` : ''}
 
-        // Price Intel: só alertas críticos (máx 2)
-        const pi = state.externalContext.priceIntel;
-        if (pi?.data) {
-            const critAlerts = (pi.data.alerts || [])
-                .filter(a => a.severity === 'CRITICAL').slice(0, 2);
-            if (critAlerts.length) {
-                parts.push('PREÇO:' + critAlerts.map(a => a.title.slice(0, 60)).join(' | '));
-            }
-        }
+Responda sempre em português brasileiro, de forma direta e orientada a resultados.
+Para análises complexas, use Chain-of-Thought: raciocine passo a passo antes de concluir.`;
 
-        // Memória: só os mais recentes (1 linha cada)
-        if (memory.pdvHistory?.length) {
-            parts.push('HIST:' + memory.pdvHistory.slice(0, 2).join(' | ').slice(0, 150));
-        }
-        if (memory.chatHistory?.length) {
-            parts.push('CHAT:' + memory.chatHistory
-                .map(h => `Q:${h.q} A:${h.a}`)
-                .join(' | ')
-                .slice(0, 150));
-        }
+    const messages = [
+        ...history,
+        { role: 'user', content: message },
+    ];
 
-        return parts.join('\n');
-    }
+    const response = await client.messages.create({
+        model:      'claude-sonnet-4-20250514',
+        max_tokens: 1500,
+        system:     systemPrompt,
+        messages,
+    });
 
-    // [v4] 1 chamada direta, sem CoT
-    async function _chatDirect(userMessage, context, intent) {
-        const systemPrompt = _buildSystemPrompt(intent);
-        const messages = [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: (context ? context + '\n\n---\n' : '') + userMessage },
-        ];
-        const raw = await _callGroq(messages, { maxTokens: 450 }); // [v4] era 600
-        if (!raw) return null;
-        return { text: raw, confidence: 'MEDIUM' };
-    }
+    const reply = response.content[0]?.text || '';
 
-    function _buildSystemPrompt(intent) {
-        const base = `K11 Brain — IA operacional de distribuidora hidráulica. Direto, objetivo, português BR, máx 3 parágrafos.`;
-        const map = {
-            STOCKOUT:      base + ' Foco: ruptura. Ação imediata.',
-            PRICING:       base + ' Foco: precificação. Equilibre margem e competitividade.',
-            GOALS:         base + ' Foco: meta. Calcule gap e sugira ações para fechar hoje.',
-            ANALYSIS:      base + ' Foco: causa raiz. Fator principal + impacto financeiro.',
-            ACTION:        base + ' Foco: plano. 3 ações por impacto.',
-            FORECAST:      base + ' Foco: previsão. Use tendências. Seja honesto sobre confiança.',
-            COMPARISON:    base + ' Foco: comparação de PDVs. Diferencial do melhor vs pior.',
-            REPLENISHMENT: base + ' Foco: reposição. Produtos críticos + fornecedor sugerido.',
-            MARGIN:        base + ' Foco: margem. Onde está sendo corroída e como recuperar.',
-        };
-        return map[intent] || base;
-    }
-
-    function _updateMemoryAfterChat(pdvId, userId, question, response, intent) {
-        const insight   = response.text.split('.')[0].trim().slice(0, 120);
-        const timestamp = new Date().toLocaleDateString('pt-BR');
-        const entry     = `[${timestamp}] ${intent}: ${insight}`;
-
-        if (pdvId) {
-            const mem = state.memory.pdvs.get(pdvId) || _newPDVMemory(pdvId);
-            mem.insights.unshift(entry);
-            if (mem.insights.length > 20) mem.insights.pop();
-            mem.chatHistory.push({ q: question.slice(0, 80), a: response.text.slice(0, 120), intent });
-            if (mem.chatHistory.length > 20) mem.chatHistory.shift();
-            state.memory.pdvs.set(pdvId, mem);
-        }
-
-        state.memory.global.insights.unshift(entry);
-        if (state.memory.global.insights.length > 50) state.memory.global.insights.pop();
-
-        // [v4] Persiste apenas insights de alta relevância
-        if (['ANALYSIS', 'ACTION', 'FORECAST'].includes(intent)) {
-            _persistMemory(pdvId ? 'pdv' : 'global', pdvId || 'global', 'insight', entry);
-        }
-    }
-
-    // ════════════════════════════════════════════════════════════════════
-    // ANÁLISE PROATIVA v4 — alertas antes de serem perguntados
-    // ════════════════════════════════════════════════════════════════════
-
-    async function _runProactiveAnalysis() {
-        state.logger?.info('AI-CORE', '🔍 Análise proativa v4...');
-        const alerts = [];
-
-        try {
-            // 1. PDVs em queda de tendência
-            alerts.push(...await _analyzeTrends());
-
-            // 2. Anomalias de margem
-            alerts.push(...await _analyzeMarginAnomalies());
-
-            // 3. Rupturas recorrentes (> 2 dias)
-            alerts.push(...await _analyzeRupturePatterns());
-
-            // 4. [v4] Alerta automático quando ≥ 5 SKUs em ruptura simultânea
-            alerts.push(...await _analyzeHighRuptureCount());
-
-            // 5. Insight semanal (toda segunda-feira)
-            if (new Date().getDay() === 1) {
-                const weekly = await _generateWeeklyInsight();
-                if (weekly) alerts.push(weekly);
-            }
-
-            if (alerts.length) {
-                state.proactiveQueue.push(...alerts);
-                _broadcastSSE('proactive_alerts', { alerts, timestamp: new Date() });
-                state.logger?.info('AI-CORE', `📢 ${alerts.length} alertas proativos`);
-            }
-
-        } catch (err) {
-            state.logger?.error('AI-CORE', 'Erro análise proativa', { error: err.message });
-        }
-    }
-
-    async function _analyzeTrends() {
-        const alerts = [];
-        try {
-            const { data: pdvs } = await state.supabase
-                .from('pdv').select('id, nome, vendas_hoje, vendas_semana').limit(10);
-            for (const pdv of pdvs || []) {
-                const dailyAvg = (pdv.vendas_semana || 0) / 7;
-                if (dailyAvg > 0 && pdv.vendas_hoje < dailyAvg * 0.5) {
-                    alerts.push({
-                        type: 'TREND_ALERT', severity: 'WARNING', pdvId: pdv.id,
-                        title: `${pdv.nome}: vendas ${((pdv.vendas_hoje / dailyAvg - 1) * 100).toFixed(0)}% abaixo da média`,
-                        action: 'Verifique ruptura, equipe ou eventos externos.',
-                        source: 'proactive',
-                    });
-                }
-            }
-        } catch (_) {}
-        return alerts;
-    }
-
-    async function _analyzeMarginAnomalies() {
-        const alerts = [];
-        try {
-            const { data: pdvs } = await state.supabase
-                .from('pdv').select('id, nome, margem_operacional').limit(10);
-            for (const pdv of pdvs || []) {
-                if ((pdv.margem_operacional || 0) < 20) {
-                    alerts.push({
-                        type: 'MARGIN_ALERT', severity: 'CRITICAL', pdvId: pdv.id,
-                        title: `${pdv.nome}: margem crítica (${pdv.margem_operacional?.toFixed(1)}%)`,
-                        action: 'Revisar mix de produtos e negociar reposição.',
-                        source: 'proactive',
-                    });
-                }
-            }
-        } catch (_) {}
-        return alerts;
-    }
-
-    async function _analyzeRupturePatterns() {
-        const alerts = [];
-        try {
-            const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
-            const { data: prods } = await state.supabase
-                .from('produtos')
-                .select('id, nome, qtd_disponivel, pdv_id')
-                .eq('qtd_disponivel', 0)
-                .lt('updated_at', twoDaysAgo)
-                .limit(5);
-            for (const p of prods || []) {
-                alerts.push({
-                    type: 'CHRONIC_STOCKOUT', severity: 'CRITICAL', prodId: p.id, pdvId: p.pdv_id,
-                    title: `Ruptura crônica: ${p.nome} (>2 dias zerado)`,
-                    action: 'Verificar PO emitida e status de entrega.',
-                    source: 'proactive',
-                });
-            }
-        } catch (_) {}
-        return alerts;
-    }
-
-    // [v4] Novo: alerta quando muitos SKUs zerados simultaneamente
-    async function _analyzeHighRuptureCount() {
-        const alerts = [];
-        try {
-            const { count } = await state.supabase
-                .from('produtos')
-                .select('id', { count: 'exact', head: true })
-                .eq('qtd_disponivel', 0);
-            if ((count || 0) >= 5) {
-                alerts.push({
-                    type: 'HIGH_RUPTURE_COUNT', severity: 'CRITICAL',
-                    title: `${count} SKUs em ruptura simultânea`,
-                    action: 'Revisar plano de reposição urgente. Priorize os de maior valor.',
-                    source: 'proactive',
-                });
-            }
-        } catch (_) {}
-        return alerts;
-    }
-
-    async function _generateWeeklyInsight() {
-        if (!process.env.GROQ_API_KEY) return null;
-        try {
-            const { data: pdvs } = await state.supabase
-                .from('pdv').select('nome, vendas_semana, margem_operacional, meta_semana').limit(5);
-            if (!pdvs?.length) return null;
-
-            const summary = pdvs.map(p =>
-                `${p.nome}:R$${Math.round(p.vendas_semana || 0)},m:${p.margem_operacional?.toFixed(1) || '?'}%`
-            ).join(' | ');
-
-            // [v4] Prompt comprimido — menos tokens
-            const raw = await _callGroq([{
-                role: 'user',
-                content: `K11 Brain. 1 insight estratégico em 2 frases, dados semana:\n${summary}`,
-            }], { maxTokens: 120 }); // [v4] era 150
-
-            if (!raw) return null;
-            return {
-                type: 'WEEKLY_INSIGHT', severity: 'INFO',
-                title: 'Insight Semanal K11 Brain',
-                action: raw.trim(), source: 'proactive',
-            };
-        } catch (_) { return null; }
-    }
-
-    // ════════════════════════════════════════════════════════════════════
-    // ESTRATÉGIA E ANOMALIA
-    // ════════════════════════════════════════════════════════════════════
-
-    async function generateStrategy(pdvData, options = {}) {
-        const { depth = 'full' } = options;
-        const memory  = _buildMemoryContext(pdvData?.id, null, 'ACTION');
-        const context = _buildCompressedContext(pdvData, memory, 'ACTION');
-
-        const prompt = depth === 'quick'
-            ? `${context}\n\n3 ações prioritárias hoje. Formato: 1.[URGÊNCIA] Ação — Impacto`
-            : `${context}\n\nEstratégia para hoje:\n1.SITUAÇÃO(1 linha)\n2.TOP 3 PRIORIDADES\n3.ALERTAS\n4.META REALISTA`;
-
-        const raw = await _callGroq(
-            [{ role: 'user', content: prompt }],
-            { maxTokens: 450 } // [v4] era 700
-        );
-        if (!raw) return { strategy: 'Contexto insuficiente.', confidence: 'LOW' };
-
-        const entry = `[${new Date().toLocaleDateString('pt-BR')}] ${pdvData?.nome}: ${raw.slice(0, 80)}`;
-        state.memory.global.decisions.unshift(entry);
-        if (state.memory.global.decisions.length > 30) state.memory.global.decisions.pop();
-        if (pdvData?.id) _persistMemory('pdv', pdvData.id, 'strategy', entry);
-
-        return { strategy: raw, confidence: 'HIGH', generatedAt: new Date() };
-    }
-
-    async function analyzeAnomaly(pdvId, pdvName, metric, currentValue, expectedValue, unit = '') {
-        const pct       = expectedValue > 0 ? ((currentValue - expectedValue) / expectedValue * 100).toFixed(1) : '?';
-        const direction = currentValue > expectedValue ? 'acima' : 'abaixo';
-
-        // [v4] Prompt comprimido
-        const raw = await _callGroq([{
-            role: 'user',
-            content: `PDV:${pdvName} métrica:${metric} atual:${currentValue}${unit} esperado:${expectedValue}${unit} desvio:${pct}%${direction}\n2-3 frases: causa provável e ação.`,
-        }], { maxTokens: 200 }); // [v4] era 250
-
-        if (!raw) return null;
-
-        const record = { pdvId, metric, currentValue, expectedValue, analysis: raw.trim(), detectedAt: new Date() };
-        state.memory.global.anomalies.unshift(record);
-        if (state.memory.global.anomalies.length > 20) state.memory.global.anomalies.pop();
-        _persistMemory('pdv', pdvId, 'anomaly', record);
-
-        return record;
-    }
-
-    // ════════════════════════════════════════════════════════════════════
-    // GROQ — v4: timeout 15s (era 25s)
-    // ════════════════════════════════════════════════════════════════════
-
-    function _callGroq(messages, options = {}) {
-        return new Promise((resolve) => {
-            const apiKey = process.env.GROQ_API_KEY;
-            if (!apiKey) { resolve(null); return; }
-
-            const body = JSON.stringify({
-                model:       options.model       || state.models.fast,
-                messages,
-                max_tokens:  options.maxTokens   || 450, // [v4] era 600
-                temperature: options.temperature || 0.2,
-            });
-
-            const req = https.request({
-                hostname: 'api.groq.com',
-                path:     '/openai/v1/chat/completions',
-                method:   'POST',
-                headers: {
-                    'Content-Type':   'application/json',
-                    'Authorization':  `Bearer ${apiKey}`,
-                    'Content-Length': Buffer.byteLength(body),
-                },
-            }, (res) => {
-                let data = '';
-                res.on('data', c => { data += c; });
-                res.on('end', () => {
-                    try {
-                        const p = JSON.parse(data);
-                        resolve(p.error ? null : p.choices?.[0]?.message?.content || null);
-                    } catch (_) { resolve(null); }
-                });
-            });
-            req.on('error', () => resolve(null));
-            req.setTimeout(15000, () => { req.destroy(); resolve(null); }); // [v4] era 25s
-            req.write(body);
-            req.end();
-        });
-    }
-
-    // ════════════════════════════════════════════════════════════════════
-    // SSE
-    // ════════════════════════════════════════════════════════════════════
-
-    function addSSEClient(res) {
-        res.writeHead(200, {
-            'Content-Type':  'text/event-stream',
-            'Cache-Control': 'no-cache',
-            'Connection':    'keep-alive',
-        });
-        state.sseClients.add(res);
-        _sendToClient(res, 'connected', { status: 'ai_core_v4_ready' });
-
-        if (state.proactiveQueue.length) {
-            _sendToClient(res, 'proactive_alerts', {
-                alerts:    state.proactiveQueue.slice(-10),
-                timestamp: new Date(),
-            });
-        }
-
-        res.on('close', () => state.sseClients.delete(res));
-    }
-
-    function _broadcastSSE(event, data) {
-        const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-        for (const client of state.sseClients) {
-            try { client.write(payload); } catch (_) { state.sseClients.delete(client); }
-        }
-    }
-
-    function _sendToClient(res, event, data) {
-        try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch (_) {}
-    }
-
-    // ════════════════════════════════════════════════════════════════════
-    // PUBLIC API
-    // ════════════════════════════════════════════════════════════════════
+    // Salva mensagem na memória persistida
+    await _saveMessage(pdvId, 'user',      message, 'claude-sonnet-4-20250514');
+    await _saveMessage(pdvId, 'assistant', reply,   'claude-sonnet-4-20250514');
 
     return {
-        init,
-        chat,
-        generateStrategy,
-        analyzeAnomaly,
-        injectContext,
-        addSSEClient,
-        getMemory:           (pdvId) => state.memory.pdvs.get(pdvId) || null,
-        getProactiveAlerts:  () => state.proactiveQueue.slice(-20),
-        clearProactiveQueue: () => { state.proactiveQueue = []; },
+        reply,
+        reasoning:  mode === 'cot' ? _extractReasoning(reply) : null,
+        tokens:     response.usage?.output_tokens || 0,
+        pdvId,
+        source:     'anthropic',
     };
-})();
+}
 
-module.exports = aiCore;
+function _extractReasoning(text) {
+    const match = text.match(/(?:Raciocínio|Análise|Passo\s+\d+)[:\s]+([\s\S]+?)(?=\n\n|Conclusão|Recomendação|$)/i);
+    return match?.[1]?.trim() || null;
+}
+
+/** Gera estratégia completa para um PDV */
+async function generateStrategy(pdvData, { depth = 'full' } = {}) {
+    const client = _getClient();
+    if (!client) {
+        return { strategy: 'API não configurada', actions: [], forecast: null };
+    }
+
+    const prompt = `Gere uma estratégia ${depth === 'full' ? 'completa' : 'rápida'} para este PDV.
+Dados: ${JSON.stringify(pdvData, null, 2)}
+
+Retorne APENAS JSON:
+{
+  "strategy": "resumo executivo da estratégia",
+  "priority": "high|medium|low",
+  "actions": [
+    { "order": 1, "action": "descrição", "impact": "alto|médio|baixo", "deadline_days": 7 }
+  ],
+  "forecast": {
+    "revenue_30d": 0,
+    "growth_pct": 0,
+    "risk_level": "high|medium|low"
+  },
+  "kpis": ["KPI 1", "KPI 2"]
+}`;
+
+    const response = await client.messages.create({
+        model:      'claude-sonnet-4-20250514',
+        max_tokens: 2000,
+        messages:   [{ role: 'user', content: prompt }],
+    });
+
+    const text  = response.content[0]?.text || '{}';
+    const match = text.match(/\{[\s\S]*\}/);
+    return match ? JSON.parse(match[0]) : { strategy: text, actions: [], forecast: null };
+}
+
+/** Analisa uma anomalia pontual */
+async function analyzeAnomaly(pdvId, pdvName, metric, currentValue, expectedValue, unit = '') {
+    const client = _getClient();
+    const diff   = currentValue - expectedValue;
+    const pct    = expectedValue !== 0 ? ((diff / expectedValue) * 100).toFixed(1) : 'N/A';
+
+    if (!client) {
+        return {
+            severity:       Math.abs(parseFloat(pct)) > 30 ? 'high' : 'medium',
+            cause:          `${metric} desviou ${pct}% do esperado`,
+            recommendation: 'Verifique manualmente o PDV.',
+            source:         'local',
+        };
+    }
+
+    const prompt = `Anomalia detectada no PDV "${pdvName}" (${pdvId}):
+Métrica: ${metric}
+Valor atual: ${currentValue}${unit}
+Valor esperado: ${expectedValue}${unit}
+Desvio: ${pct}%
+
+Analise a causa provável e recomende ações. Retorne JSON:
+{
+  "severity": "critical|high|medium|low",
+  "cause": "causa provável em 1 frase",
+  "recommendation": "ação recomendada em 1-2 frases",
+  "urgency_hours": 24
+}`;
+
+    const response = await client.messages.create({
+        model: 'claude-sonnet-4-20250514', max_tokens: 500,
+        messages: [{ role: 'user', content: prompt }],
+    });
+
+    const text  = response.content[0]?.text || '{}';
+    const match = text.match(/\{[\s\S]*\}/);
+    const result = match ? JSON.parse(match[0]) : { severity: 'medium', cause: text };
+
+    // Adiciona à fila de alertas proativos
+    const alert = { pdvId, pdvName, metric, currentValue, expectedValue, ...result, ts: new Date().toISOString() };
+    _alerts.unshift(alert);
+    if (_alerts.length > 50) _alerts.pop();
+    _broadcast('ai:anomaly', alert);
+
+    return result;
+}
+
+/** Análise proativa periódica */
+async function _runProactiveAnalysis() {
+    const sb = _sb;
+    if (!sb) return;
+    try {
+        const { data: pdvs } = await sb.from('pdvs').select('*').limit(20);
+        if (!pdvs?.length) return;
+
+        for (const pdv of pdvs) {
+            if ((pdv.meta_pct || 100) < 40) {
+                const alert = {
+                    type:    'META_CRITICA',
+                    pdvId:   pdv.id,
+                    pdvName: pdv.nome,
+                    msg:     `Meta em ${Math.round(pdv.meta_pct || 0)}% em ${pdv.nome}`,
+                    ts:      new Date().toISOString(),
+                };
+                _alerts.unshift(alert);
+                _broadcast('ai:proactive-alert', alert);
+            }
+        }
+    } catch (_) {}
+}
+
+function addSSEClient(res) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+    _sseClients.add(res);
+    res.write(`data: ${JSON.stringify({ event: 'ai:connected', data: { alerts: _alerts.slice(0, 5) } })}\n\n`);
+    const ka = setInterval(() => {
+        try { res.write(': keepalive\n\n'); } catch (_) { clearInterval(ka); _sseClients.delete(res); }
+    }, 30000);
+    res.on('close', () => { clearInterval(ka); _sseClients.delete(res); });
+}
+
+function getProactiveAlerts() { return _alerts.slice(0, 20); }
+function getMemory(pdvId) { return _memory[pdvId] || []; }
+async function loadMemoryAsync(pdvId) { return await _loadMemory(pdvId); }
+function injectContext(key, value) { _context[key] = value; }
+
+function init(sb, logger, { analysisIntervalMs = 15 * 60 * 1000 } = {}) {
+    _sb     = sb;
+    _logger = logger || console;
+    _runProactiveAnalysis();
+    setInterval(_runProactiveAnalysis, analysisIntervalMs);
+    _logger.info('AI-CORE', 'AI Core v3 inicializado');
+}
+
+module.exports = { init, chat, generateStrategy, analyzeAnomaly, addSSEClient, getProactiveAlerts, getMemory, loadMemoryAsync, injectContext };

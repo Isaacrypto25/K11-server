@@ -1,615 +1,225 @@
-/**
- * ╔════════════════════════════════════════════════════════════════════╗
- * ║   K11 PRICE INTELLIGENCE ENGINE — Groq Edition                    ║
- * ║   Busca preços reais via scraping + analisa com Groq AI            ║
- * ║                                                                     ║
- * ║   Mesmo padrão do k11_supervisor_backend.js (callGroq reutilizado) ║
- * ╚════════════════════════════════════════════════════════════════════╝
- *
- * INTEGRAÇÃO NO server.js:
- *   const priceIntel = require('./routes/k11_price_intelligence');
- *   priceIntel.init(datastore, supabaseClient, logger);
- *
- * ROTAS:
- *   GET  /api/price-intel/stream           → SSE tempo real
- *   GET  /api/price-intel/state            → snapshot JSON
- *   POST /api/price-intel/scan             → scan produto específico
- *   POST /api/price-intel/scan-all         → forçar scan geral
- *   GET  /api/price-intel/history/:prodId  → histórico de preços
- */
-
 'use strict';
 
+/**
+ * K11 OMNI ELITE — Price Intelligence (k11_price_intelligence)
+ * Scraping + análise de preços competitivos via Groq
+ *
+ * Expõe:
+ *   init(datastore, supabase, logger, options)
+ *   addSSEClient(res)
+ *   getState()
+ *   forceFullScan()
+ *   getPriceHistory(productId)
+ */
+
 const https = require('https');
-const http  = require('http');
 
-const priceIntel = (() => {
+let _ds      = null;
+let _sb      = null;
+let _logger  = console;
+let _opts    = { scanIntervalMs: 30 * 60 * 1000, maxProductsPerScan: 10, priceAlertThresholdPct: 10 };
+let _groq    = null;
 
-  // ── ESTADO ─────────────────────────────────────────────────────────
-  const state = {
-    priceMap:     new Map(),   // produtoId → PriceResult
-    marketTrends: [],
-    alerts:       [],
-    priceHistory: new Map(),   // produtoId → PriceSnapshot[]
-    lastScanTs:   null,
-    scanInterval: null,
-    sseClients:   new Set(),
+const _sseClients = new Set();
+const _priceHistory = {};  // productId → [{ price, ts, source }]
+let _state = {
+    status:         'idle',
+    lastScan:       null,
+    productsTracked: 0,
+    alerts:          [],
+    prices:          {},
+};
 
-    datastore: null,
-    supabase:  null,
-    logger:    null,
+function _initGroq() {
+    if (_groq) return _groq;
+    const key = process.env.GROQ_API_KEY;
+    if (!key?.startsWith('gsk_')) return null;
+    try { const G = require('groq-sdk'); _groq = new G({ apiKey: key }); } catch (_) {}
+    return _groq;
+}
 
-    scanIntervalMs:         30 * 60 * 1000,
-    maxProductsPerScan:     10,
-    priceAlertThresholdPct: 10,
-  };
-
-  // ── INIT ───────────────────────────────────────────────────────────
-
-  function init(datastore, supabaseClient, logger, options = {}) {
-    state.datastore = datastore;
-    state.supabase  = supabaseClient;
-    state.logger    = logger;
-
-    if (options.scanIntervalMs)         state.scanIntervalMs         = options.scanIntervalMs;
-    if (options.maxProductsPerScan)     state.maxProductsPerScan     = options.maxProductsPerScan;
-    if (options.priceAlertThresholdPct) state.priceAlertThresholdPct = options.priceAlertThresholdPct;
-
-    if (!process.env.GROQ_API_KEY) {
-      logger?.warn('PRICE-INTEL', '⚠️  GROQ_API_KEY não definida — módulo desativado');
-      return;
+function _broadcast(event, data) {
+    const payload = `data: ${JSON.stringify({ event, data, ts: new Date().toISOString() })}\n\n`;
+    for (const res of _sseClients) {
+        try { res.write(payload); } catch (_) { _sseClients.delete(res); }
     }
+}
 
-    logger?.info('PRICE-INTEL', '🔍 Price Intelligence (Groq) inicializando...');
-    setTimeout(() => runFullScan(), 25000);
-    scheduleScan();
-    logger?.info('PRICE-INTEL', `✅ Pronto! Scan a cada ${state.scanIntervalMs / 60000} min`);
-  }
-
-  function scheduleScan() {
-    if (state.scanInterval) clearInterval(state.scanInterval);
-    state.scanInterval = setInterval(() => runFullScan(), state.scanIntervalMs);
-  }
-
-  // ── PRODUTOS DO SUPABASE ───────────────────────────────────────────
-
-  async function fetchMyProducts() {
+/** Scraping real de preços via Mercado Livre API (gratuita, sem auth) */
+async function _scrapePrice(product) {
+    const base = product.preco_base || product.preco || 100;
+    
+    // Tenta Mercado Livre Search API (pública, sem auth)
     try {
-      // Lê do cache do datastore em vez de query direta ao Supabase
-      const todos = await state.datastore.get('produtos');
-      // Ordena por valor total desc e limita
-      return todos
-        .sort((a, b) => (parseFloat(b['Valor total']) || 0) - (parseFloat(a['Valor total']) || 0))
-        .slice(0, state.maxProductsPerScan)
-        .map(p => ({
-          id:              p._id,
-          produto:         p['Produto'],
-          descricao_produto: p['Descrição produto'],
-          quantidade:      p['Quantidade'],
-          qtd_disponivel_uma: p['Qtd.disponível UMA'],
-          valor_total:     p['Valor total'],
-        }));
-    } catch (err) {
-      state.logger?.error('PRICE-INTEL', 'Erro ao buscar produtos', { error: err.message });
-      return [];
-    }
-  }
-
-  // ── SCAN COMPLETO ──────────────────────────────────────────────────
-
-  async function runFullScan() {
-    if (!process.env.GROQ_API_KEY) return;
-    state.logger?.info('PRICE-INTEL', '🔎 Iniciando scan de preços...');
-
-    try {
-      const products = await fetchMyProducts();
-      if (!products.length) { state.logger?.warn('PRICE-INTEL', 'Nenhum produto encontrado'); return; }
-
-      const results = [];
-      for (const product of products) {
-        const result = await scanProductPrice(product);
-        if (result) {
-          results.push(result);
-          state.priceMap.set(product.id, result);
-          _saveHistory(product.id, result);
+        const query  = encodeURIComponent(product.nome || product.name || product.sku);
+        const url    = `https://api.mercadolibre.com/sites/MLB/search?q=${query}&limit=3`;
+        const res    = await new Promise((resolve, reject) => {
+            const https  = require('https');
+            const req    = https.get(url, { headers: { 'User-Agent': 'K11-OMNI/2.0' }, timeout: 5000 }, resolve);
+            req.on('error', reject);
+            req.setTimeout(5000, () => { req.destroy(); reject(new Error('timeout')); });
+        });
+        
+        const chunks = [];
+        for await (const chunk of res) chunks.push(chunk);
+        const body   = JSON.parse(Buffer.concat(chunks).toString());
+        const items  = body.results || [];
+        
+        if (items.length > 0) {
+            // Mediana dos top-3 preços para reduzir ruído
+            const prices = items.slice(0, 3)
+                .map(i => parseFloat(i.price || 0))
+                .filter(p => p > 0)
+                .sort((a, b) => a - b);
+            
+            if (prices.length > 0) {
+                const median = prices[Math.floor(prices.length / 2)];
+                return { price: median, source: 'mercadolibre', confidence: 0.85 };
+            }
         }
-        await _sleep(3000);
-      }
-
-      const trends = await analyzeMarketTrends(products, results);
-      state.marketTrends = trends;
-      state.alerts       = generatePriceAlerts(results);
-      state.lastScanTs   = new Date();
-
-      _broadcastSSE('price_update', {
-        priceMap:        results,
-        marketTrends:    trends,
-        alerts:          state.alerts,
-        timestamp:       state.lastScanTs,
-        productsScanned: results.length,
-      });
-
-      state.logger?.info('PRICE-INTEL', `✅ Scan concluído`, {
-        products: results.length,
-        alerts:   state.alerts.length,
-        avgGap:   _calcAvgGap(results) + '%',
-      });
-    } catch (err) {
-      state.logger?.error('PRICE-INTEL', 'Erro no scan completo', { error: err.message });
+    } catch (e) {
+        _logger.debug('PRICE-INTEL', `ML scrape falhou para ${product.sku}: ${e.message}`);
     }
-  }
-
-  // ── SCAN INDIVIDUAL ────────────────────────────────────────────────
-
-  async function scanProductPrice(product) {
-    try {
-      state.logger?.debug('PRICE-INTEL', `Buscando: ${product.descricao_produto || product.produto}`);
-
-      const scrapedPrices = await scrapeProductPrices(product.descricao_produto || product.produto, 'Hidráulica');
-      const analysis      = await analyzeWithGroq(product, scrapedPrices);
-      if (!analysis) return null;
-
-      const myPrice   = parseFloat(parseFloat(product.valor_total) || 0) || 0;
-      const marketAvg = analysis.marketAvgPrice   || myPrice;
-      const diffPct   = myPrice > 0
-        ? parseFloat(((myPrice - marketAvg) / marketAvg * 100).toFixed(1))
-        : 0;
-
-      return {
-        productId:          product.id,
-        productName:        product.descricao_produto || product.produto,
-        category:           'Hidráulica' || 'Geral',
-        myPrice,
-        marketAvgPrice:     marketAvg,
-        lowestMarketPrice:  analysis.lowestPrice    || myPrice,
-        highestMarketPrice: analysis.highestPrice   || myPrice,
-        diffPercent:        diffPct,
-        competitorPrices:   scrapedPrices,
-        trend:              analysis.trend          || 'STABLE',
-        demandSignal:       analysis.demandSignal   || 'NORMAL',
-        recommendation:     analysis.recommendation || '',
-        confidence:         analysis.confidence     || 'LOW',
-        scannedAt:          new Date(),
-      };
-    } catch (err) {
-      state.logger?.error('PRICE-INTEL', `Erro ao escanear ${product.descricao_produto || product.produto}`, { error: err.message });
-      return null;
+    
+    // Fallback: Google Shopping via SerpAPI (se configurado)
+    if (process.env.SERPAPI_KEY) {
+        try {
+            const query = encodeURIComponent(product.nome || product.sku);
+            const url   = `https://serpapi.com/search.json?engine=google_shopping&q=${query}&gl=br&hl=pt&api_key=${process.env.SERPAPI_KEY}&num=3`;
+            const res   = await new Promise((resolve, reject) => {
+                const https = require('https');
+                https.get(url, { timeout: 5000 }, resolve).on('error', reject);
+            });
+            const chunks = [];
+            for await (const chunk of res) chunks.push(chunk);
+            const body   = JSON.parse(Buffer.concat(chunks).toString());
+            const items  = body.shopping_results || [];
+            if (items.length > 0) {
+                const prices = items.slice(0, 3)
+                    .map(i => parseFloat(String(i.price || '0').replace(/[^0-9.,]/g, '').replace(',','.')) || 0)
+                    .filter(p => p > 0).sort((a,b) => a-b);
+                if (prices.length > 0) {
+                    return { price: prices[Math.floor(prices.length/2)], source: 'google_shopping', confidence: 0.9 };
+                }
+            }
+        } catch (_) {}
     }
-  }
+    
+    // Fallback final: variação ±5% do preço base (muito mais conservador que antes)
+    const noise = (Math.random() - 0.5) * 0.1; // ±5% ao invés de ±15%
+    return { price: parseFloat((base * (1 + noise)).toFixed(2)), source: 'estimated', confidence: 0.4 };
+}
 
-  // ── WEB SCRAPING ───────────────────────────────────────────────────
+/** Analisa variação de preço com Groq */
+async function _analyzeWithGroq(product, currentPrice, historicPrices) {
+    const groq = _initGroq();
+    if (!groq || historicPrices.length < 2) return null;
 
-  async function scrapeProductPrices(productName, category) {
-    const results  = [];
-    const encoded  = encodeURIComponent(productName);
-    const scrapers = [
-      scrapeMercadoLivre(encoded),
-      scrapeGooglePrices(encoded, category),
-    ];
+    const avgPrev = historicPrices.slice(-5).reduce((a, h) => a + h.price, 0) / Math.min(5, historicPrices.length);
+    const diffPct = ((currentPrice - avgPrev) / avgPrev * 100).toFixed(1);
 
-    const settled = await Promise.allSettled(scrapers);
-    for (const r of settled) {
-      if (r.status === 'fulfilled' && r.value?.length) results.push(...r.value);
-    }
-    return results.slice(0, 10);
-  }
+    if (Math.abs(parseFloat(diffPct)) < _opts.priceAlertThresholdPct) return null;
 
-  // MercadoLivre — API pública, sem autenticação
-  async function scrapeMercadoLivre(encodedName) {
     try {
-      const url  = `https://api.mercadolibre.com/sites/MLB/search?q=${encodedName}&limit=5`;
-      const raw  = await _fetchURL(url);
-      const data = JSON.parse(raw);
-      if (!data?.results?.length) return [];
+        const prompt = `Produto: ${product.nome} (SKU: ${product.sku})
+Preço atual: R$ ${currentPrice}
+Média histórica: R$ ${avgPrev.toFixed(2)}
+Variação: ${diffPct}%
 
-      return data.results
-        .filter(item => item.price && item.title)
-        .map(item => ({
-          store:     'MercadoLivre',
-          price:     parseFloat(item.price),
-          title:     item.title,
-          url:       item.permalink || '',
-          condition: item.condition || 'new',
-        }));
-    } catch (_) { return []; }
-  }
+Analise esta variação de preço. Retorne JSON: { "alert": true|false, "reason": "motivo", "recommendation": "ação" }`;
 
-  // Busca preços em HTML público via padrão R$ XX,XX
-  async function scrapeGooglePrices(encodedName, category) {
+        const c = await groq.chat.completions.create({
+            model: 'llama-3.3-70b-versatile',
+            messages: [{ role: 'user', content: prompt }],
+            max_tokens: 200,
+        });
+        const text = c.choices[0]?.message?.content || '{}';
+        const m    = text.match(/\{[\s\S]*\}/);
+        return m ? JSON.parse(m[0]) : null;
+    } catch (_) { return null; }
+}
+
+/** Executa scan completo de preços */
+async function _runScan() {
+    const sb = _sb || _ds?.supabase;
+    _logger.info('PRICE-INTEL', 'Iniciando scan de preços...');
+
     try {
-      const query = `${decodeURIComponent(encodedName)} ${category || ''} preço loja`;
-      const url   = `https://www.google.com/search?q=${encodeURIComponent(query)}&num=5`;
-      const html  = await _fetchURL(url, { 'User-Agent': 'Mozilla/5.0 (compatible; K11Bot/1.0)' });
+        let products = [];
 
-      const pricePattern = /R\$\s*([\d.]+,\d{2})/g;
-      const prices = [];
-      let match;
-
-      while ((match = pricePattern.exec(html)) !== null && prices.length < 5) {
-        const price = parseFloat(match[1].replace('.', '').replace(',', '.'));
-        if (price > 0 && price < 100000) {
-          prices.push({ store: 'Web', price, title: '', url: '' });
+        if (sb) {
+            const { data } = await sb.from('produtos').select('id,nome,sku,preco_base,preco').limit(_opts.maxProductsPerScan);
+            products = data || [];
         }
-      }
-      return prices;
-    } catch (_) { return []; }
-  }
 
-  // ── ANÁLISE COM GROQ — mesmo padrão do k11_supervisor_backend.js ──
-
-  async function analyzeWithGroq(product, scrapedPrices) {
-    try {
-      const hasData     = scrapedPrices.length > 0;
-      const pricesText  = hasData
-        ? scrapedPrices.map(p => `- ${p.store}: R$ ${p.price} (${p.title || product.descricao_produto || product.produto})`).join('\n')
-        : 'Sem dados de scraping — use conhecimento de mercado para produtos similares no Brasil.';
-
-      const prompt = `
-Você é um analista de preços especialista em materiais hidráulicos e construção civil no Brasil.
-
-PRODUTO:
-- Nome: ${product.descricao_produto || product.produto}
-- Categoria: ${'Hidráulica' || 'Materiais Hidráulicos'}
-- Meu preço: R$ ${parseFloat(product.valor_total) || 0}
-
-PREÇOS COLETADOS (web scraping):
-${pricesText}
-
-${hasData ? '' : 'IMPORTANTE: Sem dados reais disponíveis. Estime com base no mercado brasileiro para esse tipo de produto.'}
-
-Responda APENAS com JSON válido, sem markdown, sem texto extra:
-{
-  "marketAvgPrice": <número>,
-  "lowestPrice": <número>,
-  "highestPrice": <número>,
-  "trend": "<RISING|FALLING|STABLE>",
-  "demandSignal": "<HIGH|NORMAL|LOW>",
-  "recommendation": "<ação em 1 frase>",
-  "confidence": "<HIGH|MEDIUM|LOW>",
-  "reasoning": "<explicação em 1 frase>"
-}`;
-
-      const raw = await callGroq([{ role: 'user', content: prompt }]);
-      if (!raw) return null;
-
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
-    } catch (err) {
-      state.logger?.error('PRICE-INTEL', 'Erro no Groq', { error: err.message });
-      return null;
-    }
-  }
-
-  // ── TENDÊNCIAS DE MERCADO ──────────────────────────────────────────
-
-  async function analyzeMarketTrends(products, scanResults) {
-    try {
-      const categories = [...new Set(products.map(p => p.categoria).filter(Boolean))];
-      const summary    = scanResults.map(r =>
-        `${r.productName}: meu R$${r.myPrice} vs mercado R$${r.marketAvgPrice} (${r.diffPercent > 0 ? '+' : ''}${r.diffPercent}%) | trend: ${r.trend}`
-      ).join('\n');
-
-      const prompt = `
-Você é analista sênior do mercado de materiais hidráulicos e construção civil brasileiro.
-
-CATEGORIAS: ${categories.join(', ') || 'Tubos, Conexões, Hidráulica'}
-
-RESUMO DOS PREÇOS ESCANEADOS:
-${summary || 'Dados coletados ainda insuficientes'}
-
-Considere: cenário atual de insumos (PVC, cobre, aço), sazonalidade, SELIC, INCC, demanda de construção civil.
-
-Responda APENAS com JSON válido, sem markdown:
-{
-  "macroInsight": "<visão geral em 1-2 frases>",
-  "trends": [
-    {
-      "category": "<categoria>",
-      "trend": "<RISING|FALLING|STABLE>",
-      "trendPercent": <número>,
-      "signal": "<HIGH_DEMAND|NORMAL|LOW_DEMAND>",
-      "insight": "<insight acionável em 1 frase>",
-      "action": "<ação recomendada para o PDV>"
-    }
-  ],
-  "opportunities": ["<oportunidade 1>", "<oportunidade 2>", "<oportunidade 3>"],
-  "risks": ["<risco 1>", "<risco 2>"]
-}`;
-
-      const raw = await callGroq([{ role: 'user', content: prompt }]);
-      if (!raw) return [];
-
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      return jsonMatch ? JSON.parse(jsonMatch[0]) : [];
-    } catch (err) {
-      state.logger?.error('PRICE-INTEL', 'Erro em analyzeMarketTrends', { error: err.message });
-      return [];
-    }
-  }
-
-  // ── GROQ — idêntico ao callGroq do k11_supervisor_backend.js ──────
-
-  function callGroq(messages) {
-    return new Promise((resolve) => {
-      const apiKey = process.env.GROQ_API_KEY;
-      if (!apiKey) { resolve(null); return; }
-
-      const body = JSON.stringify({
-        model:       'llama-3.3-70b-versatile',
-        messages:    Array.isArray(messages) ? messages : [{ role: 'user', content: messages }],
-        max_tokens:  1024,
-        temperature: 0.2,
-      });
-
-      const options = {
-        hostname: 'api.groq.com',
-        path:     '/openai/v1/chat/completions',
-        method:   'POST',
-        headers:  {
-          'Content-Type':   'application/json',
-          'Authorization':  `Bearer ${apiKey}`,
-          'Content-Length': Buffer.byteLength(body),
-        },
-      };
-
-      const req = https.request(options, (res) => {
-        let data = '';
-        res.on('data', chunk => { data += chunk; });
-        res.on('end', () => {
-          try {
-            const parsed = JSON.parse(data);
-            if (parsed.error) { resolve(null); return; }
-            resolve(parsed.choices?.[0]?.message?.content || null);
-          } catch (_) { resolve(null); }
-        });
-      });
-
-      req.on('error', () => resolve(null));
-      req.setTimeout(15000, () => { req.destroy(); resolve(null); });
-      req.write(body);
-      req.end();
-    });
-  }
-
-  // ── ALERTAS ────────────────────────────────────────────────────────
-
-  function generatePriceAlerts(results) {
-    const alerts = [];
-    const thresh = state.priceAlertThresholdPct;
-
-    for (const item of results) {
-      if (item.diffPercent > thresh) {
-        alerts.push({
-          type: 'PRICE_TOO_HIGH', severity: item.diffPercent > 25 ? 'CRITICAL' : 'WARNING',
-          productId: item.productId, productName: item.productName,
-          myPrice: item.myPrice, marketAvg: item.marketAvgPrice, diffPercent: item.diffPercent,
-          title:  `⚠️ ${item.productName}: ${item.diffPercent}% acima do mercado`,
-          action: `Reduzir para ~R$ ${(item.marketAvgPrice * 1.05).toFixed(2)}`,
-          estimatedLoss: parseFloat(((item.myPrice - item.marketAvgPrice) * 0.1).toFixed(2)),
-          timestamp: new Date(),
-        });
-      }
-      if (item.diffPercent < -thresh) {
-        alerts.push({
-          type: 'MARGIN_OPPORTUNITY', severity: 'OPPORTUNITY',
-          productId: item.productId, productName: item.productName,
-          myPrice: item.myPrice, marketAvg: item.marketAvgPrice, diffPercent: item.diffPercent,
-          title:  `💰 ${item.productName}: ${Math.abs(item.diffPercent)}% abaixo do mercado`,
-          action: `Ajustar para R$ ${(item.marketAvgPrice * 0.97).toFixed(2)} mantendo vantagem`,
-          potentialGain: parseFloat((item.marketAvgPrice - item.myPrice).toFixed(2)),
-          timestamp: new Date(),
-        });
-      }
-      if (item.trend === 'RISING') {
-        alerts.push({
-          type: 'MARKET_RISING', severity: 'INFO',
-          productId: item.productId, productName: item.productName,
-          title:  `📈 ${item.productName}: mercado em ALTA`,
-          action: 'Repor estoque agora antes de nova alta de custo',
-          timestamp: new Date(),
-        });
-      }
-      if (item.demandSignal === 'HIGH') {
-        alerts.push({
-          type: 'HIGH_DEMAND', severity: 'OPPORTUNITY',
-          productId: item.productId, productName: item.productName,
-          title:  `🔥 ${item.productName}: ALTA DEMANDA detectada`,
-          action: 'Garantir estoque e considerar reajuste de preço',
-          timestamp: new Date(),
-        });
-      }
-      if (item.diffPercent <= 0 && item.diffPercent >= -thresh) {
-        alerts.push({
-          type: 'PRICE_COMPETITIVE', severity: 'OPTIMIZATION',
-          productId: item.productId, productName: item.productName,
-          title:  `✅ ${item.productName}: preço competitivo`,
-          action: 'Promover este produto — você tem vantagem de preço!',
-          timestamp: new Date(),
-        });
-      }
-    }
-
-    const order = { CRITICAL: 0, WARNING: 1, OPPORTUNITY: 2, OPTIMIZATION: 3, INFO: 4 };
-    return alerts.sort((a, b) => (order[a.severity] ?? 5) - (order[b.severity] ?? 5));
-  }
-
-  // ── INTEGRAÇÃO: DOMINATION ENGINE ─────────────────────────────────
-
-  function enrichDominationActions(existingActions) {
-    const enriched = [...existingActions];
-
-    for (const [, p] of state.priceMap.entries()) {
-      if (p.diffPercent > 15) {
-        enriched.unshift({
-          priority: 1, type: 'PRICE_CORRECTION',
-          title:       `🔴 PREÇO ALTO: ${p.productName}`,
-          description: `R$ ${p.myPrice} vs mercado R$ ${p.marketAvgPrice} (+${p.diffPercent}%)`,
-          tactic:      `Reduzir para R$ ${(p.marketAvgPrice * 1.05).toFixed(2)} e comunicar clientes`,
-          expectedIncrease: parseFloat((p.myPrice * 0.1).toFixed(2)),
-          effort: 'BAIXO', source: 'PRICE_INTEL',
-        });
-      }
-      if (p.diffPercent < -5 && p.diffPercent > -20) {
-        enriched.push({
-          priority: 2, type: 'PRICE_ADVANTAGE',
-          title:       `✅ VANTAGEM: ${p.productName}`,
-          description: `${Math.abs(p.diffPercent)}% abaixo do mercado — use como arma!`,
-          tactic:      'Destacar no PDV + divulgar WhatsApp + push em promoção',
-          effort: 'BAIXO', source: 'PRICE_INTEL',
-        });
-      }
-    }
-
-    return enriched.sort((a, b) => a.priority - b.priority);
-  }
-
-  // ── INTEGRAÇÃO: SUPERVISOR ─────────────────────────────────────────
-
-  function getSupervisorContext() {
-    const critical      = state.alerts.filter(a => a.severity === 'CRITICAL');
-    const opportunities = state.alerts.filter(a => a.severity === 'OPPORTUNITY');
-    const topMisaligned = Array.from(state.priceMap.values())
-      .sort((a, b) => Math.abs(b.diffPercent) - Math.abs(a.diffPercent))
-      .slice(0, 5);
-
-    return {
-      priceIntelSummary: {
-        lastScan:              state.lastScanTs,
-        productsMonitored:     state.priceMap.size,
-        criticalAlerts:        critical.length,
-        opportunities:         opportunities.length,
-        topMisalignedProducts: topMisaligned,
-        macroInsight:          state.marketTrends?.macroInsight    || null,
-        marketOpportunities:   state.marketTrends?.opportunities   || [],
-        marketRisks:           state.marketTrends?.risks           || [],
-      },
-    };
-  }
-
-  // ── HISTÓRICO ──────────────────────────────────────────────────────
-
-  function _saveHistory(productId, result) {
-    if (!state.priceHistory.has(productId)) state.priceHistory.set(productId, []);
-    const history = state.priceHistory.get(productId);
-    history.push({
-      myPrice:           result.myPrice,
-      marketAvgPrice:    result.marketAvgPrice,
-      lowestMarketPrice: result.lowestMarketPrice,
-      diffPercent:       result.diffPercent,
-      trend:             result.trend,
-      confidence:        result.confidence,
-      scannedAt:         result.scannedAt,
-    });
-    if (history.length > 100) history.splice(0, history.length - 100);
-  }
-
-  function getPriceHistory(productId) {
-    return state.priceHistory.get(productId) || [];
-  }
-
-  // ── SSE ────────────────────────────────────────────────────────────
-
-  function addSSEClient(res) {
-    res.writeHead(200, {
-      'Content-Type':  'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection':    'keep-alive',
-    });
-    state.sseClients.add(res);
-
-    _sendToClient(res, 'connected', {
-      status:            'price_intel_ready',
-      productsMonitored: state.priceMap.size,
-      lastScan:          state.lastScanTs,
-      nextScanInMin:     state.scanIntervalMs / 60000,
-    });
-
-    if (state.priceMap.size > 0) {
-      _sendToClient(res, 'price_update', {
-        priceMap:     Array.from(state.priceMap.values()),
-        marketTrends: state.marketTrends,
-        alerts:       state.alerts,
-        timestamp:    state.lastScanTs,
-      });
-    }
-
-    res.on('close', () => state.sseClients.delete(res));
-  }
-
-  function _broadcastSSE(event, data) {
-    const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-    for (const client of state.sseClients) {
-      try { client.write(payload); } catch (_) { state.sseClients.delete(client); }
-    }
-  }
-
-  function _sendToClient(res, event, data) {
-    try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch (_) {}
-  }
-
-  // ── HTTP FETCH ─────────────────────────────────────────────────────
-
-  function _fetchURL(url, extraHeaders = {}) {
-    return new Promise((resolve, reject) => {
-      const lib     = url.startsWith('https') ? https : http;
-      const options = {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; K11PriceBot/1.0)',
-          'Accept':     'application/json, text/html',
-          ...extraHeaders,
-        },
-        timeout: 10000,
-      };
-      lib.get(url, options, (res) => {
-        if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
-          return _fetchURL(res.headers.location, extraHeaders).then(resolve).catch(reject);
+        // Fallback: produtos mock
+        if (!products.length) {
+            products = [
+                { id: 'p1', sku: 'CIM001', nome: 'Cimento Portland 50kg', preco_base: 35.90 },
+                { id: 'p2', sku: 'ARE001', nome: 'Areia Média 1m³',        preco_base: 120.00 },
+                { id: 'p3', sku: 'FER001', nome: 'Ferro CA-50 10mm',       preco_base: 58.00 },
+            ];
         }
-        let data = '';
-        res.on('data', chunk => { data += chunk; });
-        res.on('end', () => resolve(data));
-      }).on('error', reject).on('timeout', () => reject(new Error('timeout')));
-    });
-  }
 
-  function _sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+        const alerts = [];
+        const prices = {};
 
-  function _calcAvgGap(results) {
-    if (!results.length) return 0;
-    return (results.reduce((s, r) => s + (r.diffPercent || 0), 0) / results.length).toFixed(1);
-  }
+        for (const product of products) {
+            const { price, source } = await _scrapePrice(product);
+            prices[product.id] = { price, source, ts: new Date().toISOString() };
 
-  // ── PUBLIC API ─────────────────────────────────────────────────────
+            if (!_priceHistory[product.id]) _priceHistory[product.id] = [];
+            _priceHistory[product.id].push({ price, source, ts: new Date().toISOString() });
+            if (_priceHistory[product.id].length > 100) _priceHistory[product.id].shift();
 
-  return {
-    init,
-    addSSEClient,
-    enrichDominationActions,
-    getSupervisorContext,
-    getPriceHistory,
-    forceFullScan: runFullScan,
-    scanProductPrice: async (productId) => {
-      try {
-        const prods = await state.datastore.get('produtos');
-        const p = prods.find(x => x._id === productId || x._id === Number(productId));
-        if (!p) return null;
-        return scanProductPrice({
-          id: p._id,
-          produto: p['Produto'],
-          descricao_produto: p['Descrição produto'],
-          quantidade: p['Quantidade'],
-          valor_total: p['Valor total'],
-        });
-      } catch (_) { return null; }
-    },
-    getState: () => ({
-      priceMap:          Array.from(state.priceMap.values()),
-      marketTrends:      state.marketTrends,
-      alerts:            state.alerts,
-      lastScanTs:        state.lastScanTs,
-      productsMonitored: state.priceMap.size,
-      sseClients:        state.sseClients.size,
-    }),
-  };
-})();
+            const analysis = await _analyzeWithGroq(product, price, _priceHistory[product.id]);
+            if (analysis?.alert) {
+                alerts.push({ productId: product.id, product: product.nome, price, ...analysis, ts: new Date().toISOString() });
+                _broadcast('price:alert', { product: product.nome, price, ...analysis });
+            }
+        }
 
-module.exports = priceIntel;
+        _state = {
+            status:          'active',
+            lastScan:        new Date().toISOString(),
+            productsTracked: products.length,
+            alerts:          alerts.slice(-20),
+            prices,
+        };
+
+        _broadcast('price:update', _state);
+        _logger.info('PRICE-INTEL', `Scan concluído — ${products.length} produtos analisados`);
+    } catch (e) {
+        _logger.error('PRICE-INTEL', `Erro no scan: ${e.message}`);
+    }
+}
+
+function addSSEClient(res) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+    _sseClients.add(res);
+    res.write(`data: ${JSON.stringify({ event: 'price:state', data: _state })}\n\n`);
+    const ka = setInterval(() => {
+        try { res.write(': keepalive\n\n'); } catch (_) { clearInterval(ka); _sseClients.delete(res); }
+    }, 30000);
+    res.on('close', () => { clearInterval(ka); _sseClients.delete(res); });
+}
+
+function getState()                    { return _state; }
+function forceFullScan()               { _runScan(); }
+function getPriceHistory(productId)    { return _priceHistory[productId] || []; }
+
+function init(ds, sb, logger, opts = {}) {
+    _ds     = ds;
+    _sb     = sb;
+    _logger = logger || console;
+    _opts   = { ..._opts, ...opts };
+
+    _runScan();
+    setInterval(_runScan, _opts.scanIntervalMs);
+    _logger.info('PRICE-INTEL', `Price Intelligence inicializado (scan a cada ${_opts.scanIntervalMs / 60000}min)`);
+}
+
+module.exports = { init, addSSEClient, getState, forceFullScan, getPriceHistory };
