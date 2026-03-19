@@ -1,142 +1,560 @@
-'use strict';
-
 /**
- * K11 OMNI ELITE — Supervisor Backend (k11_supervisor_backend)
- * Motor de análise em background com SSE para o dashboard operacional
- *
- * Expõe:
- *   init(datastore, supabase, logger)
- *   addSSEClient(res)
- *   chat(message) → { reply, score, recommendations }
- *   getState()
+ * ╔════════════════════════════════════════════════════════════════╗
+ * ║    K11 SUPERVISOR MEGA — Backend Ultra-Inteligente             ║
+ * ║    Cérebro Operacional & Comercial — Railway/Supabase          ║
+ * ║                                                                 ║
+ * ║    INTEGRAÇÃO: Copiar para server.js ou criar arquivo separado ║
+ * ║    ATIVA: supervisor.init(datastore, supabaseClient)           ║
+ * ╚════════════════════════════════════════════════════════════════╝
  */
 
-let _ds      = null;
-let _sb      = null;
-let _logger  = console;
-let _groq    = null;
-let _state   = { status: 'idle', lastCheck: null, score: 100, alerts: [] };
-const _sseClients = new Set();
+'use strict';
 
-function _initGroq() {
-    if (_groq) return _groq;
-    const key = process.env.GROQ_API_KEY;
-    if (!key?.startsWith('gsk_')) return null;
+const https = require('https');
+
+// ════════════════════════════════════════════════════════════════════
+// SUPERVISOR MEGA — Estado Global
+// ════════════════════════════════════════════════════════════════════
+
+const supervisor = (() => {
+  const state = {
+    // Dados agregados
+    pdvPerformance: new Map(),
+    productMetrics: new Map(),
+    operationalAlerts: [],
+    commercialInsights: [],
+    strategicRecommendations: [],
+    
+    // Real-time
+    sseClients: new Set(),
+    lastAnalysisTs: null,
+    analysisInterval: null,
+    
+    // IA Context
+    aiConversationHistory: [],
+    contextMemory: {
+      last30Days: null,
+      trends: null,
+      seasonality: null,
+      patterns: null
+    },
+    
+    // Dependencies (injetadas na init)
+    datastore: null,
+    supabase: null,
+    logger: null,
+    groq: null,
+  };
+
+  // ════════════════════════════════════════════════════════════════
+  // 1. INICIALIZAÇÃO
+  // ════════════════════════════════════════════════════════════════
+
+  function init(datastore, supabaseClient, logger) {
+    state.datastore = datastore;
+    state.supabase = supabaseClient;
+    state.logger = logger;
+    
+    logger?.info('SUPERVISOR', '🧠 Supervisor Mega inicializando...');
+    
+    // Inicia análise periódica (a cada 2 minutos)
+    scheduleAnalysis();
+    
+    // Primeira análise após 15s
+    setTimeout(() => runFullAnalysis(), 15000);
+    
+    logger?.info('SUPERVISOR', '✅ Supervisor pronto!');
+  }
+
+  function scheduleAnalysis() {
+    if (state.analysisInterval) clearInterval(state.analysisInterval);
+    state.analysisInterval = setInterval(() => runFullAnalysis(), 120000); // 2 min
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // 2. ANÁLISE COMERCIAL
+  // ════════════════════════════════════════════════════════════════
+
+  async function analyzeCommercial() {
     try {
-        const Groq = require('groq-sdk');
-        _groq = new Groq({ apiKey: key });
-    } catch (_) {}
-    return _groq;
-}
+      // Lê do cache do datastore (sem nova query ao Supabase)
+      const pdvData = await state.datastore.get('pdv');
 
-function _broadcast(event, data) {
-    const payload = `data: ${JSON.stringify({ event, data, ts: new Date().toISOString() })}\n\n`;
-    for (const res of _sseClients) {
-        try { res.write(payload); } catch (_) { _sseClients.delete(res); }
-    }
-}
+      // Agrupa registros por loja
+      const lojaMap = {};
+      const hoje = new Date().toISOString().slice(0, 10);
+      const ontem = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
-async function _runAnalysis() {
-    try {
-        const sb = _sb || _ds?.supabase;
-        if (!sb) return;
-
-        // Coleta dados dos PDVs
-        const { data: pdvs } = await sb.from('pdvs').select('*').limit(50);
-        if (!pdvs?.length) return;
-
-        const alerts = [];
-        let totalScore = 100;
-
-        for (const pdv of pdvs) {
-            if (pdv.estoque_critico) {
-                alerts.push({ type: 'estoque', pdv: pdv.nome, msg: `Estoque crítico em ${pdv.nome}` });
-                totalScore -= 5;
-            }
-            if (pdv.meta_atingida === false) {
-                alerts.push({ type: 'meta', pdv: pdv.nome, msg: `Meta não atingida: ${pdv.nome}` });
-                totalScore -= 3;
-            }
+      for (const row of pdvData) {
+        const loja = row['Loja'];
+        if (!loja) continue;
+        if (!lojaMap[loja]) lojaMap[loja] = { hoje: 0, ontem: 0, produtos: {} };
+        const qtd = parseFloat(row['Quantidade vendida']) || 0;
+        const data = row['Data de lançamento do cupom fiscal'];
+        if (data === hoje)  lojaMap[loja].hoje  += qtd;
+        if (data === ontem) lojaMap[loja].ontem += qtd;
+        const prod = row['Nº do produto'];
+        if (prod) {
+          lojaMap[loja].produtos[prod] = (lojaMap[loja].produtos[prod] || 0) + qtd;
         }
+      }
 
-        _state = {
-            status:    'active',
-            lastCheck: new Date().toISOString(),
-            score:     Math.max(0, totalScore),
-            alerts,
-            pdvsAnalisados: pdvs.length,
-        };
+      const pdvMetrics = Object.entries(lojaMap)
+        .sort((a, b) => b[1].hoje - a[1].hoje)
+        .map(([loja, dados], i) => {
+          const trend = dados.ontem > 0
+            ? ((dados.hoje - dados.ontem) / dados.ontem * 100).toFixed(1)
+            : '0.0';
+          const topProducts = Object.entries(dados.produtos)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3)
+            .map(([productId, quantity]) => ({ productId, quantity }));
+          return {
+            rank: i + 1,
+            name: loja,
+            salesToday: dados.hoje,
+            salesTrend: trend,
+            productsMoving: Object.keys(dados.produtos).length,
+            customersToday: 0,
+            performance: parseFloat(trend) > 10 ? 'CRESCENDO' : parseFloat(trend) < -5 ? 'CAINDO' : 'ESTÁVEL',
+            topProducts
+          };
+        });
 
-        _broadcast('supervisor:update', _state);
-        _logger.info('SUPERVISOR', `Análise concluída — score: ${_state.score}`);
-    } catch (e) {
-        _logger.error('SUPERVISOR', `Erro na análise: ${e.message}`);
+      state.pdvPerformance = new Map(pdvMetrics.map(m => [m.name, m]));
+      
+      state.logger?.info('SUPERVISOR', `Análise comercial: ${pdvMetrics.length} PDVs analisados`);
+      return pdvMetrics;
+
+    } catch (err) {
+      state.logger?.error('SUPERVISOR', 'Erro em analyzeCommercial', { error: err.message });
+      return [];
     }
-}
+  }
 
-async function chat(message) {
-    const groq = _initGroq();
-    if (!groq) {
-        return {
-            reply:           'Supervisor: API Groq não configurada. Configure GROQ_API_KEY.',
-            score:           _state.score,
-            recommendations: _state.alerts.map(a => a.msg),
-        };
+  async function getTopProductsForPDV(pdvId) {
+    try {
+      const { data, error } = await state.supabase
+        .from('movimento')
+        .select('produto_id, quantidade, created_at')
+        .eq('pdv_id', pdvId)
+        .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (error) throw error;
+
+      // Agrupa e conta
+      const productCount = {};
+      for (const item of data) {
+        productCount[item.produto_id] = (productCount[item.produto_id] || 0) + item.quantidade;
+      }
+
+      // Top 3
+      return Object.entries(productCount)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([prodId, qty]) => ({ productId: prodId, quantity: qty }));
+
+    } catch (err) {
+      return [];
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // 3. ANÁLISE OPERACIONAL
+  // ════════════════════════════════════════════════════════════════
+
+  async function analyzeOperational() {
+    const alerts = [];
+
+    try {
+      // Produtos em risco de ruptura
+      const todosProdutos = await state.datastore.get('produtos');
+      const produtos = todosProdutos.filter(p => (parseFloat(p['Quantidade']) || 0) < 100);
+
+      for (const prod of produtos) {
+        const daysUntilStockout = 1 > 0 
+          ? parseFloat(prod['Quantidade']) || 0 / 1 
+          : 999;
+
+        if (daysUntilStockout < 3) {
+          alerts.push({
+            type: 'CRITICAL',
+            title: `${prod['Descrição produto'] || prod['Produto'] || 'Produto'}: Ruptura em ${daysUntilStockout.toFixed(1)}h`,
+            action: 'REPOR_URGENTE',
+            product: prod['Descrição produto'] || prod['Produto'] || 'Produto',
+            currentStock: parseFloat(prod['Quantidade']) || 0,
+            daysUntilStockout,
+            estimatedLoss: parseFloat(prod['Valor total']) || 0 * daysUntilStockout * 1,
+            priority: 1,
+            timestamp: new Date()
+          });
+        } else if (daysUntilStockout < 7) {
+          alerts.push({
+            type: 'WARNING',
+            title: `${prod['Descrição produto'] || prod['Produto'] || 'Produto'}: Atenção - ${daysUntilStockout.toFixed(1)} dias`,
+            action: 'MONITORAR',
+            product: prod['Descrição produto'] || prod['Produto'] || 'Produto',
+            priority: 2,
+            timestamp: new Date()
+          });
+        }
+      }
+
+      // Recebimentos atrasados: tabela purchase_orders não configurada ainda
+      // TODO: criar tabela purchase_orders no Supabase para ativar este bloco
+
+      state.operationalAlerts = alerts.sort((a, b) => a.priority - b.priority);
+      state.logger?.info('SUPERVISOR', `Análise operacional: ${alerts.length} alertas`);
+      return alerts;
+
+    } catch (err) {
+      state.logger?.error('SUPERVISOR', 'Erro em analyzeOperational', { error: err.message });
+      return [];
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // 4. GERAÇÃO DE ESTRATÉGIA (com IA)
+  // ════════════════════════════════════════════════════════════════
+
+  async function generateStrategy() {
+    if (!process.env.GROQ_API_KEY) {
+      state.logger?.warn('SUPERVISOR', 'GROQ_API_KEY não configurada - estratégia desativada');
+      return [];
     }
 
-    const systemPrompt = `Você é o Supervisor de IA do K11 OMNI ELITE, um sistema de gestão de PDVs (pontos de venda).
-Estado atual do sistema: ${JSON.stringify(_state)}
-Responda de forma direta, objetiva e orientada a ação. Máximo 3 frases.`;
+    try {
+      const commercialData = Array.from(state.pdvPerformance.values());
+      const operationalData = state.operationalAlerts.slice(0, 5);
 
-    const completion = await groq.chat.completions.create({
-        model:       'llama-3.3-70b-versatile',
-        messages:    [
-            { role: 'system', content: systemPrompt },
-            { role: 'user',   content: message },
-        ],
-        max_tokens:  500,
-        temperature: 0.5,
+      const prompt = `
+Você é um estrategista comercial de uma empresa de tubos e conexões (K11).
+Analise os dados e recomende ações para SUPERAR a concorrência:
+
+DADOS COMERCIAIS:
+${JSON.stringify(commercialData, null, 2)}
+
+DADOS OPERACIONAIS:
+${JSON.stringify(operationalData, null, 2)}
+
+FORNEÇA:
+1. Top 3 estratégias para aumentar vendas
+2. Como explorar força do melhor PDV
+3. Como recuperar PDV em queda
+4. Bundle/promoção recomendada
+5. Previsão de resultado
+
+Resonda APENAS em JSON estruturado.`;
+
+      const groqResponse = await callGroq(prompt);
+      
+      // Parse JSON da resposta
+      const jsonMatch = groqResponse.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const strategies = JSON.parse(jsonMatch[0]);
+        state.strategicRecommendations = strategies.recommendations || [];
+        
+        state.logger?.info('SUPERVISOR', '🎯 Estratégia gerada com sucesso');
+        return strategies;
+      }
+
+      return null;
+
+    } catch (err) {
+      state.logger?.error('SUPERVISOR', 'Erro em generateStrategy', { error: err.message });
+      return null;
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // 5. CHAT COM IA (Conversa Livre)
+  // ════════════════════════════════════════════════════════════════
+
+  async function chat(userMessage, contextData = {}) {
+    if (!process.env.GROQ_API_KEY) {
+      return { error: 'IA não configurada' };
+    }
+
+    try {
+      // Busca dados reais do datastore para enriquecer o contexto
+      const [produtos, pdvRows, fornecedores] = await Promise.all([
+        state.datastore.get('produtos'),
+        state.datastore.get('pdv'),
+        state.datastore.get('fornecedor'),
+      ]);
+
+      // Busca inteligente: extrai palavras-chave da pergunta
+      const stopWords = new Set(['do','da','de','o','a','os','as','um','uma','me','qual','e','codigo','produto','tem','no','na','em','para','por','com','voce','vc']);
+      const palavras = userMessage.toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+        .replace(/[^a-z0-9 ]/g, ' ')
+        .split(' ')
+        .filter(w => w.length > 2 && !stopWords.has(w));
+
+      // Filtra apenas produtos relevantes à pergunta
+      let listaProdutos = [];
+      if (palavras.length > 0) {
+        listaProdutos = produtos.filter(p => {
+          const hay = `${p['Produto']} ${p['Descrição produto']}`.toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          return palavras.some(w => hay.includes(w));
+        }).slice(0, 10); // máximo 10 resultados
+      }
+
+      // Fallback: top 5 por estoque baixo (mais urgentes)
+      if (listaProdutos.length === 0) {
+        listaProdutos = produtos
+          .sort((a, b) => (parseFloat(a['Quantidade']) || 0) - (parseFloat(b['Quantidade']) || 0))
+          .slice(0, 5);
+      }
+
+      // Formato compacto: ~40 chars por linha
+      const topProdutos = listaProdutos
+        .map(p => `[${p['Produto']}] ${(p['Descrição produto'] || '').slice(0, 35)} Qtd:${p['Quantidade']}`)
+        .join('\n');
+
+      const buscaInfo = `(${listaProdutos.length} produto(s))`;
+
+      // Produtos com estoque zerado ou crítico (< 5)
+      const rupturas = produtos
+        .filter(p => (parseFloat(p['Quantidade']) || 0) < 5)
+        .slice(0, 10)
+        .map(p => `[${p['Produto']}] ${p['Descrição produto']} — Qtd: ${p['Quantidade']}`)
+        .join('\n') || 'Nenhuma';
+
+      // Vendas por loja (hoje)
+      const hoje = new Date().toISOString().slice(0, 10);
+      const vendasPorLoja = {};
+      for (const row of pdvRows) {
+        const loja = row['Loja'];
+        if (!loja) continue;
+        if (row['Data de lançamento do cupom fiscal'] === hoje) {
+          vendasPorLoja[loja] = (vendasPorLoja[loja] || 0) + (parseFloat(row['Quantidade vendida']) || 0);
+        }
+      }
+      const vendasStr = Object.entries(vendasPorLoja)
+        .sort((a, b) => b[1] - a[1])
+        .map(([loja, qtd]) => `Loja ${loja}: ${qtd} un.`)
+        .join(' | ') || 'Sem vendas registradas hoje';
+
+      // Monta contexto compacto (economiza tokens)
+      const context = `IA do K11. Responda direto com os dados abaixo. Sem introduções.
+
+VENDAS HOJE: ${vendasStr}
+ALERTAS: ${state.operationalAlerts.filter(a => a.type === 'CRITICAL').length} críticos
+RUPTURAS: ${rupturas.split('\n').slice(0,3).join(' | ')}
+
+PRODUTOS ${buscaInfo}:
+${topProdutos}
+
+Hora: ${new Date().toLocaleTimeString('pt-BR')} | Total estoque: ${produtos.length} itens`;
+
+      // Adiciona histórico
+      const messages = [
+        { role: 'system', content: context },
+        ...state.aiConversationHistory.slice(-10), // Últimas 10 mensagens
+        { role: 'user', content: userMessage }
+      ];
+
+      const response = await callGroq(messages);
+      
+      // Armazena no histórico
+      state.aiConversationHistory.push(
+        { role: 'user', content: userMessage },
+        { role: 'assistant', content: response }
+      );
+      
+      if (state.aiConversationHistory.length > 50) {
+        state.aiConversationHistory = state.aiConversationHistory.slice(-50);
+      }
+
+      return { success: true, response, timestamp: new Date() };
+
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // 6. CHAMADA À API GROQ
+  // ════════════════════════════════════════════════════════════════
+
+  function callGroq(messages) {
+    return new Promise((resolve, reject) => {
+      const apiKey = process.env.GROQ_API_KEY;
+      if (!apiKey) {
+        reject(new Error('GROQ_API_KEY não configurada'));
+        return;
+      }
+
+      const body = JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: Array.isArray(messages) ? messages : [{ role: 'user', content: messages }],
+        max_tokens: 1024,
+        temperature: 0.3,
+      });
+
+      const options = {
+        hostname: 'api.groq.com',
+        path: '/openai/v1/chat/completions',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Length': Buffer.byteLength(body),
+        },
+      };
+
+      const req = https.request(options, (res) => {
+        let data = '';
+        res.on('data', chunk => { data += chunk; });
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.error) reject(new Error(parsed.error.message));
+            else resolve(parsed.choices?.[0]?.message?.content || '');
+          } catch (e) { reject(e); }
+        });
+      });
+
+      req.on('error', reject);
+      req.setTimeout(15000, () => { req.destroy(); reject(new Error('Groq timeout')); });
+      req.write(body);
+      req.end();
     });
+  }
 
-    return {
-        reply:           completion.choices[0]?.message?.content || 'Sem resposta.',
-        score:           _state.score,
-        recommendations: _state.alerts.map(a => a.msg),
-    };
-}
+  // ════════════════════════════════════════════════════════════════
+  // 7. ANÁLISE COMPLETA (Orquestração)
+  // ════════════════════════════════════════════════════════════════
 
-function addSSEClient(res) {
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders?.();
-    _sseClients.add(res);
+  async function runFullAnalysis() {
+    try {
+      state.logger?.info('SUPERVISOR', '📊 Iniciando análise completa...');
+      
+      const commercial = await analyzeCommercial();
+      const operational = await analyzeOperational();
+      const strategy = await generateStrategy();
+      
+      state.lastAnalysisTs = new Date();
+      
+      // Broadcast para SSE clients
+      const summary = {
+        type: 'analysis_complete',
+        timestamp: state.lastAnalysisTs,
+        commercial,
+        operational,
+        strategy,
+        nextAnalysisIn: 120 // segundos
+      };
 
-    // Envia estado atual imediatamente
-    res.write(`data: ${JSON.stringify({ event: 'supervisor:state', data: _state, ts: new Date().toISOString() })}\n\n`);
+      _broadcastSSE('supervisor_update', summary);
+      
+      state.logger?.info('SUPERVISOR', '✅ Análise completa', {
+        pdvsAnalyzed: commercial.length,
+        alertsCritical: operational.filter(a => a.type === 'CRITICAL').length,
+        strategiesGenerated: strategy?.recommendations?.length || 0
+      });
 
-    const keepAlive = setInterval(() => {
-        try { res.write(': keepalive\n\n'); } catch (_) { clearInterval(keepAlive); _sseClients.delete(res); }
-    }, 30000);
+    } catch (err) {
+      state.logger?.error('SUPERVISOR', 'Erro em runFullAnalysis', { error: err.message });
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // 8. SSE (Server-Sent Events) — Push Real-time
+  // ════════════════════════════════════════════════════════════════
+
+  function addSSEClient(res) {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    });
+    
+    state.sseClients.add(res);
+    state.logger?.debug('SUPERVISOR', `SSE client conectado (total: ${state.sseClients.size})`);
+
+    // Envia estado atual
+    _sendToClient(res, 'connected', {
+      status: 'ready',
+      lastAnalysis: state.lastAnalysisTs,
+      alertsCount: state.operationalAlerts.length,
+      pdvsCount: state.pdvPerformance.size
+    });
 
     res.on('close', () => {
-        clearInterval(keepAlive);
-        _sseClients.delete(res);
+      state.sseClients.delete(res);
+      state.logger?.debug('SUPERVISOR', `SSE client desconectado (total: ${state.sseClients.size})`);
     });
-}
+  }
 
-function getState() { return _state; }
+  function _broadcastSSE(event, data) {
+    const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    for (const client of state.sseClients) {
+      try { client.write(payload); } catch (_) { state.sseClients.delete(client); }
+    }
+  }
 
-function init(ds, sb, logger) {
-    _ds     = ds;
-    _sb     = sb;
-    _logger = logger || console;
+  function _sendToClient(res, event, data) {
+    try {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    } catch (_) {}
+  }
 
-    // Roda análise a cada 5 minutos
-    _runAnalysis();
-    setInterval(_runAnalysis, 5 * 60 * 1000);
+  // ════════════════════════════════════════════════════════════════
+  // 9. PUBLIC API
+  // ════════════════════════════════════════════════════════════════
 
-    _logger.info('SUPERVISOR', 'Supervisor backend inicializado');
-}
+  return {
+    init,
+    addSSEClient,
+    chat,
+    getState: () => ({
+      pdvPerformance: Array.from(state.pdvPerformance.values()),
+      operationalAlerts: state.operationalAlerts,
+      strategicRecommendations: state.strategicRecommendations,
+      lastAnalysisTs: state.lastAnalysisTs,
+      sseClients: state.sseClients.size
+    }),
+    forceAnalysis: runFullAnalysis
+  };
+})();
 
-module.exports = { init, addSSEClient, chat, getState };
+// ════════════════════════════════════════════════════════════════════
+// INTEGRAÇÃO NO SERVER.JS
+// ════════════════════════════════════════════════════════════════════
+
+/**
+ * NO SEU server.js, ADICIONE:
+ * 
+ * // Após criar a app Express
+ * const supervisor = require('./k11-supervisor-mega');
+ * 
+ * // Quando Supabase estiver pronto
+ * supervisor.init(datastore, supabaseClient, logger);
+ * 
+ * // ROTAS:
+ * app.get('/api/supervisor/stream', auth.requireAuth, (req, res) => {
+ *   supervisor.addSSEClient(res);
+ * });
+ * 
+ * app.get('/api/supervisor/state', auth.requireAuth, (req, res) => {
+ *   res.json({ ok: true, data: supervisor.getState() });
+ * });
+ * 
+ * app.post('/api/supervisor/chat', auth.requireAuth, async (req, res) => {
+ *   const { message } = req.body;
+ *   const result = await supervisor.chat(message);
+ *   res.json({ ok: true, ...result });
+ * });
+ * 
+ * app.post('/api/supervisor/force-analysis', auth.requireAuth, async (req, res) => {
+ *   await supervisor.forceAnalysis();
+ *   res.json({ ok: true, message: 'Análise forçada' });
+ * });
+ */
+
+module.exports = supervisor;

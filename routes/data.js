@@ -1,93 +1,109 @@
-'use strict';
-
 /**
- * K11 OMNI ELITE — Data Routes
- * GET  /api/data/all         → todos os datasets
- * GET  /api/data/:dataset    → dataset específico
- * PUT  /api/data/:dataset/:id → atualiza item
+ * K11 OMNI ELITE — DATA ROUTES
+ * ══════════════════════════════
+ * GET  /api/data/:dataset          → retorna dataset completo
+ * GET  /api/data/all               → retorna todos os datasets
+ * PUT  /api/data/:dataset/:id      → atualiza item por ID
+ * POST /api/data/tarefas/:id/toggle → toggle done em tarefa
+ * GET  /api/data/files             → lista arquivos na pasta /data
  */
 
-const express   = require('express');
-const router    = express.Router();
+'use strict';
+
+const router    = require('express').Router();
 const datastore = require('../services/datastore');
 const logger    = require('../services/logger');
 
-// [FIX C] Mapa chave-frontend → tabela-Supabase.
-// Antes: ALLOWED_DATASETS retornava nomes internos (pdvs, pdv_anterior…) que não
-// batem com o que k11-app.js espera (pdv, pdvAnterior, pdvmesquita…).
-// Resultado: allData chegava truthy, fallback era pulado, todos os campos ficavam
-// undefined → ReferenceError no init() → "Falha ao carregar dados".
-const DATASET_MAP = {
-    produtos:       'produtos',
-    auditoria:      'auditoria',
-    movimento:      'movimento',
-    pdv:            'pdvs',
-    pdvAnterior:    'pdv_anterior',
-    tarefas:        'tarefas',
-    pdvmesquita:    'pdv_mesquita',
-    pdvjacarepagua: 'pdv_jacarepagua',
-    pdvbenfica:     'pdv_benfica',
-    fornecedor:     'fornecedor',
-};
-
-// Tabelas permitidas para GET /:dataset e PUT /:dataset/:id
-const ALLOWED_DATASETS = [...new Set(Object.values(DATASET_MAP))];
-
-// GET /api/data/all
+// GET /api/data/all — todos os datasets de uma vez
 router.get('/all', async (req, res) => {
     try {
-        const result = {};
-        await Promise.all(
-            Object.entries(DATASET_MAP).map(async ([frontendKey, tableName]) => {
-                result[frontendKey] = await datastore.readDataset(tableName);
-            })
-        );
-        res.json({ ok: true, data: result, ts: new Date().toISOString() });
-    } catch (e) {
-        logger.error('DATA', `Erro ao buscar todos os datasets: ${e.message}`);
-        res.status(500).json({ ok: false, error: e.message });
+        const all = await datastore.getAll();
+        res.json({ ok: true, data: all, ts: new Date().toISOString() });
+    } catch (err) {
+        logger.error('ROUTES/DATA', 'Falha ao carregar todos os dados', { error: err.message });
+        res.status(500).json({ ok: false, error: err.message });
     }
 });
 
-// GET /api/data/:dataset
+// GET /api/data/files — lista arquivos disponíveis
+router.get('/files', (req, res) => {
+    res.json({ ok: true, files: datastore.listFiles() });
+});
+
+// GET /api/data/:dataset — retorna dataset específico
 router.get('/:dataset', async (req, res) => {
     const { dataset } = req.params;
-    if (!ALLOWED_DATASETS.includes(dataset)) {
-        return res.status(404).json({ ok: false, error: `Dataset "${dataset}" não encontrado.` });
-    }
+    const bustCache   = req.query.refresh === '1';
+
     try {
-        const data = await datastore.readDataset(dataset);
-        res.json({ ok: true, dataset, data, count: data.length });
-    } catch (e) {
-        logger.error('DATA', `Erro ao buscar ${dataset}: ${e.message}`);
-        res.status(500).json({ ok: false, error: e.message });
+        const data = await datastore.get(dataset, { bustCache });
+
+        if (!data || (Array.isArray(data) && data.length === 0)) {
+            logger.warn('ROUTES/DATA', `Dataset vazio ou não encontrado: ${dataset}`);
+            return res.status(404).json({
+                ok:    false,
+                error: `Dataset "${dataset}" não encontrado ou vazio`,
+                data:  [],
+            });
+        }
+
+        res.json({ ok: true, dataset, rows: data.length, data, ts: new Date().toISOString() });
+
+    } catch (err) {
+        logger.error('ROUTES/DATA', `Falha ao ler ${dataset}`, { error: err.message });
+        res.status(500).json({ ok: false, error: err.message });
     }
 });
 
-// PUT /api/data/:dataset/:id
+// PUT /api/data/:dataset/:id — atualiza item
 router.put('/:dataset/:id', async (req, res) => {
     const { dataset, id } = req.params;
-    if (!ALLOWED_DATASETS.includes(dataset)) {
-        return res.status(404).json({ ok: false, error: `Dataset "${dataset}" não encontrado.` });
-    }
-    try {
-        const updates = { ...req.body, updated_at: new Date().toISOString() };
-        delete updates.id;
+    const patch           = req.body;
 
-        const sb = datastore.supabase;
-        if (sb) {
-            const { data, error } = await sb.from(dataset).update(updates).eq('id', id).select().single();
-            if (error) throw error;
-            datastore.invalidate(dataset);
-            logger.info('DATA', `Atualizado: ${dataset}/${id}`);
-            return res.json({ ok: true, data });
+    if (!patch || typeof patch !== 'object') {
+        return res.status(400).json({ ok: false, error: 'Body deve ser um objeto JSON' });
+    }
+
+    try {
+        const updated = await datastore.updateItem(dataset, id, patch);
+        if (!updated) {
+            return res.status(404).json({ ok: false, error: `Item ${id} não encontrado em ${dataset}` });
+        }
+        logger.info('ROUTES/DATA', `Item atualizado`, { dataset, id, fields: Object.keys(patch) });
+        res.json({ ok: true, updated });
+
+    } catch (err) {
+        logger.error('ROUTES/DATA', `Falha ao atualizar ${dataset}/${id}`, { error: err.message });
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// POST /api/data/tarefas/:id/toggle — toggle done
+router.post('/tarefas/:id/toggle', async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const tarefas = await datastore.get('tarefas', { bustCache: true });
+        const tarefa  = tarefas.find(t => String(t.id) === String(id));
+
+        if (!tarefa) {
+            return res.status(404).json({ ok: false, error: `Tarefa ${id} não encontrada` });
         }
 
-        res.json({ ok: true, message: 'Atualizado localmente (sem Supabase)' });
-    } catch (e) {
-        logger.error('DATA', `Erro ao atualizar ${dataset}/${id}: ${e.message}`);
-        res.status(500).json({ ok: false, error: e.message });
+        const updated = await datastore.updateItem('tarefas', id, { done: !tarefa.done });
+        logger.info('ROUTES/DATA', `Tarefa ${id} toggled`, { done: updated.done });
+        res.json({ ok: true, tarefa: updated });
+
+    } catch (err) {
+        logger.error('ROUTES/DATA', `Falha no toggle tarefa ${id}`, { error: err.message });
+        res.status(500).json({ ok: false, error: err.message });
     }
+});
+
+// DELETE /api/data/cache — invalida cache
+router.delete('/cache', (req, res) => {
+    datastore.clearCache();
+    res.json({ ok: true, message: 'Cache invalidado' });
 });
 
 module.exports = router;
