@@ -98,3 +98,14 @@ LOG_LEVEL=info
 # 2. Create Project > Node.js
 # 3. Copie o DSN
 # 4. Cole em SENTRY_DSN
+
+# WEBHOOKS DE ALERTAS
+WHATSAPP_TOKEN=
+WHATSAPP_PHONE_ID=
+WHATSAPP_TO=5521999999999
+TEAMS_WEBHOOK_URL=https://outlook.office.com/webhook/...
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+ALERT_THRESHOLD_SCORE=40
+
+# SERPAPI (Google Shopping scraping — opcional)
+SERPAPI_KEY=

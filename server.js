@@ -72,14 +72,21 @@ const auth           = require('./middleware/server-auth');
 const clienteAuth    = require('./middleware/k11-cliente-auth');
 const clienteRoutes  = require('./routes/k11-cliente-routes');
 const skillsRoutes   = require('./routes/skills-missions');
-const notifRoutes    = require('./routes/notifications');
-const photosRoutes   = require('./routes/photos');
-const reportsRoutes  = require('./routes/reports');
-const npsModule      = require('./routes/nps');
-const webhooksModule = require('./routes/webhooks');
-const orcApproval    = require('./routes/orcamento-approval');
 const register       = require('./middleware/server-register');
 const requestTracker = require('./middleware/request-tracker');
+const auditLog       = require('./middleware/audit-log');
+
+// ── NOVAS ROTAS v2.1 ──────────────────────────────────────────
+const notificationsRoutes    = require('./routes/notifications');
+const photosRoutes           = require('./routes/photos');
+const orcApprovalRoutes      = require('./routes/orcamento-approval');
+const webhooksModule         = require('./routes/webhooks');
+const reportsRoutes          = require('./routes/reports');
+const { router: npsRouter, triggerNPSAfterPhase } = require('./routes/nps');
+
+// ── SENTRY (error tracking) ───────────────────────────────────
+const sentry = require('./services/sentry');
+sentry.init();
 
 // ── ROTAS INTERNAS ────────────────────────────────────────────
 const dataRoutes   = require('./routes/data');
@@ -136,27 +143,26 @@ app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
 // ── RATE LIMITING ─────────────────────────────────────────────
+// Rate limit por usuário JWT (não por IP — evita conflito em redes corporativas com NAT)
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10),
-  max:      parseInt(process.env.RATE_LIMIT_MAX       || '200',   10),
+  max:      parseInt(process.env.RATE_LIMIT_MAX       || '200', 10),
   standardHeaders: true,
   legacyHeaders:   false,
   keyGenerator: (req) => {
+    // Tenta extrair userId do JWT; fallback para IP
     try {
-      const token = req.headers['authorization']?.slice(7) || req.query?.token || '';
+      const token = req.headers['authorization']?.slice(7) || req.query?.token;
       if (token) {
-        const [,payload] = token.split('.');
-        if (payload) {
-          const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString());
-          if (decoded.re || decoded.email) return decoded.re || decoded.email;
-        }
+        const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+        return payload.re || payload.email || req.ip;
       }
     } catch (_) {}
     return req.ip;
   },
   handler: (req, res) => {
     const uid = req.user?.re || req.user?.email || req.ip;
-    logger.warn('RATE-LIMIT', 'Limite excedido', { uid, path: req.path });
+    logger.warn('RATE-LIMIT', `Limite excedido`, { uid, path: req.path });
     res.status(429).json({ ok: false, error: 'Muitas requisições. Tente em 1 minuto.' });
   },
 });
@@ -176,6 +182,7 @@ app.use(morgan((tokens, req, res) => {
 
 // ── REQUEST TRACKER ───────────────────────────────────────────
 app.use(requestTracker);
+app.use(auditLog);
 
 
 // ─────────────────────────────────────────────────────────────
@@ -285,6 +292,13 @@ app.post('/api/ai/v3/anomaly', auth.requireAuth, auth.requireOperacional, async 
   try {
     const { pdvId, pdvName, metric, currentValue, expectedValue, unit } = req.body;
     const result = await aiCore.analyzeAnomaly(pdvId, pdvName, metric, currentValue, expectedValue, unit);
+    // Disparar webhook se crítico
+    if (result?.severity === 'critical' || result?.severity === 'high') {
+        try {
+            const wh = require('./routes/webhooks');
+            wh.dispatch({ type: 'anomalia', message: result.recommendation || result.cause, severity: result.severity, pdvName });
+        } catch (_) {}
+    }
     res.json({ ok: true, data: result });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -594,6 +608,22 @@ app.post('/api/decision/run-cycle', auth.requireAuth, auth.requireOperacional, (
             if (sb) {
                 await sb.from('phases').update({ progress_percent:pct, status }).eq('id',req.params.phase_id);
             }
+            // Trigger NPS quando fase é concluída
+            if (pct === 100) {
+                try {
+                    const sb2 = _sb();
+                    if (sb2) {
+                        const { data: fase } = await sb2.from('phases').select('project_id').eq('id', req.params.phase_id).single();
+                        if (fase?.project_id) {
+                            const { data: obra } = await sb2.from('obras').select('cliente_email').eq('id', fase.project_id).single();
+                            if (obra?.cliente_email) {
+                                const { triggerNPSAfterPhase } = require('./routes/nps');
+                                triggerNPSAfterPhase(fase.project_id, req.params.phase_id, obra.cliente_email).catch(()=>{});
+                            }
+                        }
+                    }
+                } catch (_) {}
+            }
             return res.json({ success:true, status });
         } catch(e) { res.status(500).json({ error:e.message }); }
     });
@@ -625,9 +655,7 @@ app.post('/api/decision/run-cycle', auth.requireAuth, auth.requireOperacional, (
     // ════════════════════════════════════════════════════════════
     (function registerOrcamentoRoutes(app, auth, logger) {
         const Anthropic = require('@anthropic-ai/sdk');
-        const fs        = require('fs');
-        const os        = require('os');
-        const pathMod   = require('path');
+        // [FIX 4] Removidos imports não utilizados: fs, os, pathMod, SINAPI_MOB
 
         // Multer para upload de arquivos (inline, sem require externo problemático)
         let multer;
@@ -636,13 +664,6 @@ app.post('/api/decision/run-cycle', auth.requireAuth, auth.requireOperacional, (
         const upload = multer
             ? multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } })
             : { single: () => (req, res, next) => next() };
-
-        const SINAPI_MOB = {
-            fundacao: 850, estrutura: 1200, alvenaria: 550,
-            banheiro: 1800, cozinha: 2200, piso: 450,
-            revestimento: 380, pintura: 120, elétrica: 650,
-            hidráulica: 720, cobertura: 980, reforma_geral: 1400,
-        };
 
         function _getAnthropicClient() {
             const key = process.env.ANTHROPIC_API_KEY;
@@ -751,10 +772,11 @@ Se a área foi informada, calcule quantidades reais.`;
 
             const orc = JSON.parse(jsonMatch[0]);
 
-            // Aplicar margem e padrão
+            // [FIX 2] Aplicar margem e padrão de forma consistente em ambos os campos
+            // Antes: preco_unit não incluía margemFator, gerando inconsistência no PDF
             orc.itens = (orc.itens || []).map(item => ({
                 ...item,
-                preco_unit: item.preco_unit * multi,
+                preco_unit: item.preco_unit * multi * margemFator,
                 total:      item.total      * multi * margemFator,
             }));
             orc.total = orc.itens.reduce((a, i) => a + i.total, 0);
@@ -766,17 +788,19 @@ Se a área foi informada, calcule quantidades reais.`;
             const multi = { economico:0.7, medio:1.0, alto:1.4, luxo:2.1 }[padrao] || 1.0;
             const m     = 1 + margem/100;
             const a     = area || 10;
+            // [FIX 1] Extrair itens antes para poder calcular o total real
+            const itens = [
+                { tipo:'material', nome:'Cimento Portland 50kg', especificacao:'CP-II', quantidade: Math.ceil(a*1.5), unidade:'sc', preco_unit: 35.90*multi, total: Math.ceil(a*1.5)*35.90*multi*m, sku:'CIM001', disponivel_estoque:true },
+                { tipo:'material', nome:'Areia Média', especificacao:'1m³ saco', quantidade: Math.ceil(a*0.5), unidade:'m³', preco_unit: 120*multi, total: Math.ceil(a*0.5)*120*multi*m, sku:'ARE001', disponivel_estoque:true },
+                { tipo:'material', nome:'Tijolo Cerâmico 9 furos', especificacao:'9x14x19', quantidade: Math.ceil(a*50), unidade:'un', preco_unit: 0.89*multi, total: Math.ceil(a*50)*0.89*multi*m, sku:'BRI001', disponivel_estoque:false },
+                { tipo:'servico', nome:'Mão de obra - Pedreiro', especificacao:'Inclui ajudante', quantidade: Math.ceil(a*0.3), unidade:'diária', preco_unit: 280*multi, total: Math.ceil(a*0.3)*280*multi*m },
+                { tipo:'servico', nome:'Limpeza e retirada de entulho', especificacao:'Por m²', quantidade: a, unidade:'m²', preco_unit: 25*multi, total: a*25*multi*m },
+            ];
             return {
                 descricao: texto || 'Orçamento gerado automaticamente',
                 prazo_dias: Math.ceil(a * 0.8),
-                itens: [
-                    { tipo:'material', nome:'Cimento Portland 50kg', especificacao:'CP-II', quantidade: Math.ceil(a*1.5), unidade:'sc', preco_unit: 35.90*multi, total: Math.ceil(a*1.5)*35.90*multi*m, sku:'CIM001', disponivel_estoque:true },
-                    { tipo:'material', nome:'Areia Média', especificacao:'1m³ saco', quantidade: Math.ceil(a*0.5), unidade:'m³', preco_unit: 120*multi, total: Math.ceil(a*0.5)*120*multi*m, sku:'ARE001', disponivel_estoque:true },
-                    { tipo:'material', nome:'Tijolo Cerâmico 9 furos', especificacao:'9x14x19', quantidade: Math.ceil(a*50), unidade:'un', preco_unit: 0.89*multi, total: Math.ceil(a*50)*0.89*multi*m, sku:'BRI001', disponivel_estoque:false },
-                    { tipo:'servico', nome:'Mão de obra - Pedreiro', especificacao:'Inclui ajudante', quantidade: Math.ceil(a*0.3), unidade:'diária', preco_unit: 280*multi, total: Math.ceil(a*0.3)*280*multi*m },
-                    { tipo:'servico', nome:'Limpeza e retirada de entulho', especificacao:'Por m²', quantidade: a, unidade:'m²', preco_unit: 25*multi, total: a*25*multi*m },
-                ],
-                total: 0,
+                itens,
+                total: itens.reduce((sum, i) => sum + i.total, 0), // [FIX 1] era: 0 (hardcoded)
                 alertas: ['Orçamento estimado — configure ANTHROPIC_API_KEY para análise por IA'],
             };
         }
@@ -933,19 +957,18 @@ app.use('/api/auth/cliente', clienteAuth);
 // API DO CLIENTE — rotas REST do portal (requer role: cliente)
 // ─────────────────────────────────────────────────────────────
 app.use('/api/cliente', auth.requireAuth, auth.requireCliente, clienteRoutes);
+app.use('/api/skills',   auth.requireAuth, auth.requireOperacional, skillsRoutes);
+app.use('/api/missions',      auth.requireAuth, auth.requireOperacional, skillsRoutes);
+app.use('/api/notifications', auth.requireAuth, notificationsRoutes);
+app.use('/api/photos',        auth.requireAuth, photosRoutes);
+app.use('/api/orcamento',     auth.requireAuth, orcApprovalRoutes);
+app.use('/api/webhooks',      auth.requireAuth, auth.requireOperacional, webhooksModule.router);
+app.use('/api/reports',       auth.requireAuth, reportsRoutes);
+app.use('/api/nps',           auth.requireAuth, npsRouter);
 
 // ─────────────────────────────────────────────────────────────
 // ARQUIVOS ESTÁTICOS E 404
 // ─────────────────────────────────────────────────────────────
-app.use('/api/skills',        auth.requireAuth, auth.requireOperacional, skillsRoutes);
-app.use('/api/missions',      auth.requireAuth, auth.requireOperacional, skillsRoutes);
-app.use('/api/notifications', auth.requireAuth, notifRoutes);
-app.use('/api/photos',        auth.requireAuth, photosRoutes);
-app.use('/api/reports',       auth.requireAuth, reportsRoutes);
-app.use('/api/nps',           auth.requireAuth, npsModule.router);
-app.use('/api/webhooks',      auth.requireAuth, auth.requireOperacional, webhooksModule.router);
-app.use('/api/orcamento-approval', auth.requireAuth, orcApproval);
-
 app.use(express.static('public'));
 
 app.use((req, res) => {
