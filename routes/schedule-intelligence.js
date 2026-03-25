@@ -11,9 +11,12 @@ const datastore = require('../services/datastore');
 function getSupabase() { return datastore.supabase || null; }
 const Anthropic = require('@anthropic-ai/sdk');
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY
-});
+// [FIX 3] Lazy initialization — evita crash no boot quando ANTHROPIC_API_KEY não está configurada
+function _getClient() {
+    const key = process.env.ANTHROPIC_API_KEY;
+    if (!key) return null;
+    return new Anthropic({ apiKey: key });
+}
 
 // Templates de fases padrão
 const PHASE_TEMPLATES = {
@@ -209,6 +212,10 @@ router.post('/predict-delays', async (req, res) => {
       .join('\n');
 
     // Chamar Claude para análise
+    const client = _getClient();
+    if (!client) {
+        return res.json({ success: true, analysis: { risk_level: 'low', at_risk_phases: [], recommendations: ['Configure ANTHROPIC_API_KEY para análise inteligente'] }, alerts_created: 0 });
+    }
     const message = await client.messages.create({
       model: 'claude-3-5-sonnet-20241022',
       max_tokens: 1024,
