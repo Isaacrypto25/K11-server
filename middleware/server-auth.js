@@ -70,6 +70,7 @@ function signJWT(payload, expiresInSeconds = 28800) { // 8h padrão
     const exp     = Math.floor(Date.now() / 1000) + expiresInSeconds;
     const body    = Buffer.from(JSON.stringify({
         ...payload,
+        jti: crypto.randomBytes(8).toString('hex'), // JWT ID único para blacklist
         exp,
         iat: Math.floor(Date.now() / 1000),
     })).toString('base64url');
@@ -79,6 +80,20 @@ function signJWT(payload, expiresInSeconds = 28800) { // 8h padrão
         .digest('base64url');
     return `${header}.${body}.${sig}`;
 }
+
+// ── TOKEN BLACKLIST (invalidação de refresh/logout) ────────────
+const _tokenBlacklist = new Map(); // jti → expTs
+
+function _cleanBlacklist() {
+    const now = Math.floor(Date.now() / 1000);
+    for (const [jti, exp] of _tokenBlacklist) {
+        if (exp < now) _tokenBlacklist.delete(jti);
+    }
+}
+setInterval(_cleanBlacklist, 10 * 60 * 1000); // limpa a cada 10 min
+
+function isBlacklisted(jti) { return _tokenBlacklist.has(jti); }
+function blacklistToken(jti, exp) { if (jti) _tokenBlacklist.set(jti, exp); }
 
 function verifyJWT(token) {
     try {
@@ -97,6 +112,7 @@ function verifyJWT(token) {
         const payload = JSON.parse(Buffer.from(body, 'base64url').toString());
         if (payload.exp < Math.floor(Date.now() / 1000)) return null;
 
+        if (payload.jti && isBlacklisted(payload.jti)) return null;
         return payload;
     } catch {
         return null;
@@ -225,6 +241,8 @@ function refreshHandler(req, res) {
 // ═══════════════════════════════════════════════════════════
 
 async function logoutHandler(req, res) {
+    // Blacklista o token atual para que não possa ser reutilizado
+    if (req.user?.jti) blacklistToken(req.user.jti, req.user.exp);
     if (req.user) {
         getSupabase()
             .from('audit_log')
@@ -281,4 +299,6 @@ module.exports = {
     signJWT,
     hashPin,
     verifyPin,
+    blacklistToken,
+    isBlacklisted,
 };
