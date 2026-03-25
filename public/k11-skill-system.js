@@ -1,318 +1,217 @@
 /**
- * K11 SKILL SYSTEM — Mapeamento Arquetípico de Perfis
- * ═════════════════════════════════════════════════════════════════
- * Sistema de "Eneagrama Profissional" que mapeia características,
- * habilidades e afinidades dos usuários para alocação inteligente
- * de missões e tarefas.
- * 
- * v1.0 - Núcleo do ecossistema K11 Omni
+ * K11 OMNI ELITE — Skill System (Frontend)
+ * ═══════════════════════════════════════════
+ * Gerencia arquétipos, atributos, XP e perfis de usuário no front-end.
+ * Usado por: k11-user-profile.js, k11-mission-engine.js
+ *
+ * Expõe: K11SkillSystem (global)
  */
 
 'use strict';
 
 const K11SkillSystem = (() => {
-    
-    // ── ARQUÉTIPOS (Os 4 Eixos Primários) ───────────────────────
-    const ARCHETYPES = {
-        EXECUTOR: {
-            id: 'executor',
-            name: 'O Construtor (Execução)',
-            icon: '⚡',
-            color: '#FF6B6B',
-            description: 'Foco em entrega, prazos e volume de tarefas',
-            primaryAttributes: ['velocidade', 'resistência', 'consistência'],
-            missionTypes: ['sustentacao', 'entrega', 'volume'],
-        },
-        ANALYST: {
-            id: 'analyst',
-            name: 'O Estrategista (Análise)',
-            icon: '🧠',
-            color: '#4ECDC4',
-            description: 'Foco em dados, lógica, detecção de erros e otimização',
-            primaryAttributes: ['precisão', 'lógica', 'otimização'],
-            missionTypes: ['critica', 'analise', 'validacao'],
-        },
-        DIPLOMAT: {
-            id: 'diplomat',
-            name: 'O Diplomata (Interpessoal)',
-            icon: '🤝',
-            color: '#FFE66D',
-            description: 'Foco em comunicação, suporte ao cliente e coesão do time',
-            primaryAttributes: ['empatia', 'comunicacao', 'lideranca'],
-            missionTypes: ['suporte', 'relacionamento', 'mentoria'],
-        },
-        CREATOR: {
-            id: 'creator',
-            name: 'O Criativo (Inovação)',
-            icon: '💡',
-            color: '#95E1D3',
-            description: 'Foco em novas soluções, design e melhoria de processos',
-            primaryAttributes: ['criatividade', 'inovacao', 'adaptabilidade'],
-            missionTypes: ['descoberta', 'inovacao', 'otimizacao'],
-        },
-    };
 
-    // ── ATRIBUTOS BASE ──────────────────────────────────────────
+    // ── DEFINIÇÃO DOS ATRIBUTOS ───────────────────────────────────
     const ATTRIBUTES = {
         // Executor
-        velocidade: { name: 'Velocidade', category: 'executor', max: 100 },
-        resistencia: { name: 'Resistência', category: 'executor', max: 100 },
-        consistencia: { name: 'Consistência', category: 'executor', max: 100 },
-        
+        velocidade:    { name: 'Velocidade',    archetype: 'executor',   max: 100, icon: '⚡' },
+        resistencia:   { name: 'Resistência',   archetype: 'executor',   max: 100, icon: '🏋️' },
+        consistencia:  { name: 'Consistência',  archetype: 'executor',   max: 100, icon: '🎯' },
         // Analyst
-        precisao: { name: 'Precisão', category: 'analyst', max: 100 },
-        logica: { name: 'Lógica', category: 'analyst', max: 100 },
-        otimizacao: { name: 'Otimização', category: 'analyst', max: 100 },
-        
+        precisao:      { name: 'Precisão',      archetype: 'analyst',    max: 100, icon: '🔬' },
+        logica:        { name: 'Lógica',        archetype: 'analyst',    max: 100, icon: '🧠' },
+        otimizacao:    { name: 'Otimização',    archetype: 'analyst',    max: 100, icon: '📊' },
         // Diplomat
-        empatia: { name: 'Empatia', category: 'diplomat', max: 100 },
-        comunicacao: { name: 'Comunicação', category: 'diplomat', max: 100 },
-        lideranca: { name: 'Liderança', category: 'diplomat', max: 100 },
-        
+        empatia:       { name: 'Empatia',       archetype: 'diplomat',   max: 100, icon: '❤️' },
+        comunicacao:   { name: 'Comunicação',   archetype: 'diplomat',   max: 100, icon: '💬' },
+        lideranca:     { name: 'Liderança',     archetype: 'diplomat',   max: 100, icon: '👑' },
         // Creator
-        criatividade: { name: 'Criatividade', category: 'creator', max: 100 },
-        inovacao: { name: 'Inovação', category: 'creator', max: 100 },
-        adaptabilidade: { name: 'Adaptabilidade', category: 'creator', max: 100 },
+        criatividade:  { name: 'Criatividade',  archetype: 'creator',    max: 100, icon: '🎨' },
+        inovacao:      { name: 'Inovação',      archetype: 'creator',    max: 100, icon: '💡' },
+        adaptabilidade:{ name: 'Adaptabilidade',archetype: 'creator',    max: 100, icon: '🌊' },
     };
 
-    // ── ESTRUTURA DO PERFIL ─────────────────────────────────────
+    // ── DEFINIÇÃO DOS ARQUÉTIPOS ──────────────────────────────────
+    const ARCHETYPES = {
+        executor: {
+            id:          'executor',
+            name:        'O Executor',
+            icon:        '⚡',
+            color:       '#FF8C00',
+            description: 'Velocidade, volume e consistência. Faz acontecer.',
+            attributes:  ['velocidade', 'resistencia', 'consistencia'],
+        },
+        analyst: {
+            id:          'analyst',
+            name:        'O Estrategista',
+            icon:        '🧠',
+            color:       '#60A5FA',
+            description: 'Dados, precisão e otimização. Pensa antes de agir.',
+            attributes:  ['precisao', 'logica', 'otimizacao'],
+        },
+        diplomat: {
+            id:          'diplomat',
+            name:        'O Diplomata',
+            icon:        '🤝',
+            color:       '#34D399',
+            description: 'Empatia, comunicação e liderança. Conecta pessoas.',
+            attributes:  ['empatia', 'comunicacao', 'lideranca'],
+        },
+        creator: {
+            id:          'creator',
+            name:        'O Criativo',
+            icon:        '💡',
+            color:       '#A78BFA',
+            description: 'Criatividade, inovação e adaptabilidade. Pensa diferente.',
+            attributes:  ['criatividade', 'inovacao', 'adaptabilidade'],
+        },
+    };
+
+    // ── NÍVEIS ────────────────────────────────────────────────────
+    const LEVELS = [
+        { level: 1,  xpRequired: 0,    title: 'Iniciante'   },
+        { level: 2,  xpRequired: 500,  title: 'Aprendiz'    },
+        { level: 3,  xpRequired: 1500, title: 'Praticante'  },
+        { level: 4,  xpRequired: 3000, title: 'Profissional'},
+        { level: 5,  xpRequired: 5000, title: 'Especialista'},
+        { level: 6,  xpRequired: 8000, title: 'Expert'      },
+        { level: 7,  xpRequired: 12000,title: 'Mestre'      },
+        { level: 8,  xpRequired: 18000,title: 'Grão-Mestre' },
+        { level: 9,  xpRequired: 25000,title: 'Lenda'       },
+        { level: 10, xpRequired: 35000,title: 'Elite K11'   },
+    ];
+
+    // ── CLASSE USER PROFILE ───────────────────────────────────────
     class UserProfile {
-        constructor(userId, initialData = {}) {
-            this.userId = userId;
-            this.createdAt = new Date();
-            
-            // Inicializa atributos
+        constructor(userId, attributes = {}) {
+            this.userId     = userId;
+            this.totalXP    = 0;
+            this.level      = 1;
             this.attributes = {};
-            Object.keys(ATTRIBUTES).forEach(key => {
-                this.attributes[key] = initialData[key] || 0;
-            });
-
-            // Histórico de ganhos
+            this.specializations = [];
+            this.badges     = [];
             this.skillHistory = [];
-            
-            // XP total
-            this.totalXP = initialData.totalXP || 0;
-            
-            // Nível
-            this.level = initialData.level || 1;
-            
-            // Especializações desbloqueadas
-            this.specializations = initialData.specializations || [];
-            
-            // Badges/Certificações
-            this.badges = initialData.badges || [];
+
+            // Inicializa atributos com padrão 25
+            for (const key of Object.keys(ATTRIBUTES)) {
+                this.attributes[key] = Math.min(100, Math.max(0, attributes[key] || 25));
+            }
+
+            this._recalc();
         }
 
-        // Calcula o perfil predominante (qual arquétipo o usuário mais se alinha)
-        getPrimaryArchetype() {
-            const archetypeScores = {};
-            
-            Object.values(ARCHETYPES).forEach(arch => {
-                const score = arch.primaryAttributes.reduce((sum, attr) => {
-                    return sum + (this.attributes[attr] || 0);
-                }, 0);
-                archetypeScores[arch.id] = score;
-            });
-
-            const maxArchetype = Object.entries(archetypeScores)
-                .sort(([, a], [, b]) => b - a)[0];
-            
-            return maxArchetype ? ARCHETYPES[maxArchetype[0].toUpperCase()] : null;
+        _recalc() {
+            // Calcula XP total a partir dos atributos
+            this.totalXP = Object.values(this.attributes).reduce((a, v) => a + v * 10, 0);
+            // Determina nível
+            this.level = LEVELS.filter(l => this.totalXP >= l.xpRequired).at(-1)?.level || 1;
         }
 
-        // Obtém todas as arquétipos com seus scores
+        gainXP(attribute, amount) {
+            if (!ATTRIBUTES[attribute]) return;
+            const before = this.attributes[attribute];
+            this.attributes[attribute] = Math.min(100, before + amount);
+            this.totalXP += amount * 10;
+            this.level = LEVELS.filter(l => this.totalXP >= l.xpRequired).at(-1)?.level || 1;
+            this.skillHistory.unshift({ attribute, amount, before, after: this.attributes[attribute], ts: new Date().toISOString() });
+            if (this.skillHistory.length > 100) this.skillHistory.pop();
+        }
+
+        gainXPFromMission(missionId, attributeMap) {
+            for (const [attr, amount] of Object.entries(attributeMap)) {
+                this.gainXP(attr, amount);
+            }
+        }
+
         getArchetypeScores() {
             const scores = {};
-            
-            Object.values(ARCHETYPES).forEach(arch => {
-                const score = arch.primaryAttributes.reduce((sum, attr) => {
-                    return sum + (this.attributes[attr] || 0);
-                }, 0) / arch.primaryAttributes.length; // Média
-                
-                scores[arch.id] = {
-                    name: arch.name,
-                    score: Math.round(score),
-                    color: arch.color,
-                    icon: arch.icon,
-                };
-            });
-
+            for (const [id, arch] of Object.entries(ARCHETYPES)) {
+                const vals = arch.attributes.map(a => this.attributes[a] || 0);
+                scores[id] = Math.round(vals.reduce((a, v) => a + v, 0) / vals.length);
+            }
             return scores;
         }
 
-        // Ganha XP em um atributo
-        gainXP(attributeKey, amount) {
-            if (!ATTRIBUTES[attributeKey]) {
-                console.error(`[K11Skill] Atributo inválido: ${attributeKey}`);
-                return;
-            }
-
-            const oldValue = this.attributes[attributeKey];
-            const newValue = Math.min(
-                oldValue + amount,
-                ATTRIBUTES[attributeKey].max
-            );
-
-            this.attributes[attributeKey] = newValue;
-            this.totalXP += amount;
-
-            // Registra no histórico
-            this.skillHistory.push({
-                timestamp: new Date(),
-                attribute: attributeKey,
-                amount: amount,
-                resultValue: newValue,
-                missionId: null, // Será preenchido quando ganho por missão
-            });
-
-            // Verifica avanço de nível
-            this._checkLevelUp();
-
-            return {
-                attribute: attributeKey,
-                oldValue,
-                newValue,
-                gainedXP: amount,
-            };
+        getPrimaryArchetype() {
+            const scores = this.getArchetypeScores();
+            const primary = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
+            return ARCHETYPES[primary[0]];
         }
 
-        // Ganha XP por conclusão de missão
-        gainXPFromMission(missionId, attributesMap) {
-            const gains = [];
-            
-            Object.entries(attributesMap).forEach(([attr, amount]) => {
-                const result = this.gainXP(attr, amount);
-                if (result) {
-                    this.skillHistory[this.skillHistory.length - 1].missionId = missionId;
-                    gains.push(result);
-                }
-            });
-
-            return gains;
+        getLevelInfo() {
+            const cur  = LEVELS.find(l => l.level === this.level) || LEVELS[0];
+            const next = LEVELS.find(l => l.level === this.level + 1);
+            const pct  = next ? ((this.totalXP - cur.xpRequired) / (next.xpRequired - cur.xpRequired)) * 100 : 100;
+            return { ...cur, next, progressPct: Math.min(100, Math.round(pct)) };
         }
 
-        // Verifica se subiu de nível
-        _checkLevelUp() {
-            const nextLevelThreshold = this.level * 1000;
-            if (this.totalXP >= nextLevelThreshold) {
-                this.level += 1;
-                this._unlockSpecialization();
-                return true;
-            }
-            return false;
-        }
-
-        // Desbloqueia especialização ao subir de nível
-        _unlockSpecialization() {
-            const archetype = this.getPrimaryArchetype();
-            if (!archetype) return;
-
-            const specializationId = `${archetype.id}_level_${this.level}`;
-            if (!this.specializations.includes(specializationId)) {
-                this.specializations.push(specializationId);
-                console.log(`[K11Skill] Nova especialização desbloqueada: ${specializationId}`);
-            }
-        }
-
-        // Ganha um badge
-        earnBadge(badgeId) {
-            if (!this.badges.includes(badgeId)) {
-                this.badges.push(badgeId);
-                return true;
-            }
-            return false;
-        }
-
-        // Retorna o perfil em formato de dados
         toJSON() {
             return {
-                userId: this.userId,
-                attributes: this.attributes,
-                totalXP: this.totalXP,
-                level: this.level,
-                primaryArchetype: this.getPrimaryArchetype(),
+                userId:      this.userId,
+                totalXP:     this.totalXP,
+                level:       this.level,
+                attributes:  { ...this.attributes },
                 archetypeScores: this.getArchetypeScores(),
+                primaryArchetype: this.getPrimaryArchetype().id,
                 specializations: this.specializations,
-                badges: this.badges,
-                createdAt: this.createdAt,
+                badges:      this.badges,
             };
         }
     }
 
-    // ── SISTEMA DE VALIDAÇÃO ────────────────────────────────────
-    class SkillValidator {
-        constructor() {
-            this.validations = new Map();
-        }
-
-        // Registra uma validação (mentor validando a habilidade de um aprendiz)
-        recordValidation(skillId, validatedBy, profileId) {
-            const key = `${profileId}_${skillId}`;
-            if (!this.validations.has(key)) {
-                this.validations.set(key, []);
-            }
-
-            this.validations.get(key).push({
-                timestamp: new Date(),
-                validatedBy: validatedBy,
-                count: (this.validations.get(key).length || 0) + 1,
-            });
-        }
-
-        // Verifica se uma habilidade foi validada o suficiente
-        isValidated(skillId, profileId, requiredValidations = 2) {
-            const key = `${profileId}_${skillId}`;
-            const validationCount = this.validations.get(key)?.length || 0;
-            return validationCount >= requiredValidations;
-        }
-
-        // Retorna o histórico de validações
-        getValidationHistory(profileId) {
-            const history = {};
-            for (const [key, validations] of this.validations.entries()) {
-                if (key.startsWith(profileId)) {
-                    history[key] = validations;
-                }
-            }
-            return history;
-        }
-    }
-
-    // ── GERAÇÃO DE GRÁFICO RADAR ────────────────────────────────
-    const generateRadarData = (profile) => {
-        const archetypeScores = profile.getArchetypeScores();
-        return Object.entries(archetypeScores).map(([id, data]) => ({
-            axis: data.icon + ' ' + data.name.split(' ')[1],
-            value: data.score,
-            color: data.color,
-        }));
-    };
-
-    // ── API PÚBLICA ─────────────────────────────────────────────
+    // ── API PÚBLICA ───────────────────────────────────────────────
     return {
-        // Classes
-        UserProfile,
-        SkillValidator,
-
-        // Constantes
-        ARCHETYPES,
         ATTRIBUTES,
+        ARCHETYPES,
+        LEVELS,
+        UserProfile,
 
-        // Funções
-        generateRadarData,
+        createProfile(userId, attrs = {}) {
+            return new UserProfile(userId, attrs);
+        },
 
-        // Factory methods
-        createProfile: (userId, initialData) => new UserProfile(userId, initialData),
-        createValidator: () => new SkillValidator(),
+        getArchetype(id) {
+            return ARCHETYPES[id] || null;
+        },
 
-        // Info
-        getArchetype: (id) => ARCHETYPES[id.toUpperCase()],
-        getAllArchetypes: () => Object.values(ARCHETYPES),
-        getAllAttributes: () => ATTRIBUTES,
+        getAllArchetypes() {
+            return Object.values(ARCHETYPES);
+        },
+
+        getLevelByXP(xp) {
+            return LEVELS.filter(l => xp >= l.xpRequired).at(-1) || LEVELS[0];
+        },
+
+        /** Carrega perfil do servidor */
+        async fetchProfile(userId) {
+            try {
+                const res  = await K11Auth.fetch(`/api/skills/profile/${userId}`);
+                const data = await res?.json();
+                if (data?.ok) {
+                    const p = new UserProfile(userId, data.data.attributes || {});
+                    p.totalXP  = data.data.total_xp || p.totalXP;
+                    p.level    = data.data.level    || p.level;
+                    p.badges   = data.data.badges   || [];
+                    p.specializations = data.data.specializations || [];
+                    return p;
+                }
+            } catch (e) {
+                console.warn('[K11SkillSystem] fetchProfile falhou, usando local:', e.message);
+            }
+            return new UserProfile(userId);
+        },
+
+        /** Persiste XP no servidor */
+        async saveXP(userId, attributeMap) {
+            try {
+                await K11Auth.fetch(`/api/skills/profile/${userId}/xp`, {
+                    method:  'POST',
+                    body:    JSON.stringify({ attributes: attributeMap }),
+                });
+            } catch (e) {
+                console.warn('[K11SkillSystem] saveXP falhou:', e.message);
+            }
+        },
     };
-})();
 
-// Exporta para módulos se disponível
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = K11SkillSystem;
-}
+})();
