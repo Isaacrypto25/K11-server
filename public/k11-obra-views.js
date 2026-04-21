@@ -159,86 +159,27 @@ const ObraViews = {
     obraEstoque() {
         const p       = OBRA.state.projetoAtivo;
         const estoque = OBRA.state.estoque || [];
-
-        const totalItens = estoque.length;
-        const totalValor = estoque.reduce((a, i) => a + ((i.unit_cost||0) * (i.quantity||0)), 0);
-
-        // Classifica estoque por nível
-        const criticos  = estoque.filter(i => (i.quantity||0) <= (i.min_quantity||0) && (i.min_quantity||0) > 0);
-        const normais   = estoque.filter(i => !criticos.includes(i));
-
         return `
         <div class="op-card" style="margin-bottom:10px">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
                 <button class="pos-tag" style="font-size:11px;background:rgba(255,255,255,.05);color:var(--text-muted)"
                         onclick="APP.view('obraDetalhe')">← ${p ? _esc(p.name) : 'Obra'}</button>
-                <div class="label" style="flex:1;text-align:center">📦 ESTOQUE</div>
-                <button class="pos-tag" style="font-size:11px;background:var(--primary);color:#000;font-weight:800"
-                        onclick="OBRA.actions.novoPedido()">+ Pedir</button>
+                <div class="label" style="flex:1;text-align:center">ESTOQUE</div>
             </div>
-
-            <!-- KPIs do estoque -->
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:14px">
-                <div style="background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;text-align:center">
-                    <div style="font-size:16px;font-weight:900;color:var(--primary)">${totalItens}</div>
-                    <div style="font-size:9px;color:var(--text-muted)">ITENS</div>
-                </div>
-                <div style="background:${criticos.length > 0 ? 'rgba(239,68,68,.08)' : 'rgba(16,185,129,.06)'};border:1px solid ${criticos.length > 0 ? 'rgba(239,68,68,.2)' : 'rgba(16,185,129,.2)'};border-radius:var(--radius-sm);padding:8px;text-align:center">
-                    <div style="font-size:16px;font-weight:900;color:${criticos.length > 0 ? 'var(--danger)' : 'var(--success)'}">${criticos.length}</div>
-                    <div style="font-size:9px;color:var(--text-muted)">CRÍTICOS</div>
-                </div>
-                <div style="background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;text-align:center">
-                    <div style="font-size:12px;font-weight:800;color:var(--text-soft)">R$${_fmt(totalValor)}</div>
-                    <div style="font-size:9px;color:var(--text-muted)">VALOR</div>
-                </div>
-            </div>
-
             ${estoque.length === 0
-                ? `<div style="text-align:center;padding:32px 16px">
-                       <div style="font-size:40px;margin-bottom:12px;opacity:.25">📦</div>
-                       <div style="font-size:13px;font-weight:700;color:var(--text-soft);margin-bottom:8px">Estoque vazio</div>
-                       <div style="font-size:11px;color:var(--text-muted);margin-bottom:16px">Os materiais pedidos via Obramax aparecerão aqui</div>
-                       <button style="padding:10px 22px;background:var(--primary);color:#000;border:none;border-radius:var(--radius-full);font-size:12px;font-weight:800;cursor:pointer"
-                               onclick="OBRA.actions.novoPedido()">
-                           🏪 Abrir Catálogo Obramax
-                       </button>
+                ? `<div style="text-align:center;padding:32px 0">
+                       <div style="font-size:36px;margin-bottom:10px">📦</div>
+                       <div style="font-size:13px;color:var(--text-muted)">Nenhum item no estoque.</div>
                    </div>`
-                : `
-                ${criticos.length > 0 ? `
-                <div style="padding:8px 12px;background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2);border-radius:var(--radius-md);margin-bottom:10px;display:flex;align-items:center;gap:8px">
-                    <span style="font-size:16px">⚠️</span>
-                    <div style="flex:1;font-size:12px;color:var(--danger)">${criticos.length} item(s) abaixo do estoque mínimo</div>
-                    <button onclick="OBRA.actions.novoPedido()" style="font-size:10px;padding:4px 10px;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);border-radius:var(--radius-sm);color:var(--danger);cursor:pointer;font-weight:700">Repor</button>
-                </div>` : ''}
-
-                ${[...criticos, ...normais].map(item => {
-                    const qty      = item.quantity || 0;
-                    const minQty   = item.min_quantity || 0;
-                    const isCrit   = criticos.includes(item);
-                    const pct      = minQty > 0 ? Math.min(100, Math.round(qty / (minQty * 3) * 100)) : null;
-                    const cor      = isCrit ? 'var(--danger)' : qty > 0 ? 'var(--success)' : 'var(--text-muted)';
-                    return `
-                    <div style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:var(--radius-md);border:1px solid ${isCrit ? 'rgba(239,68,68,.2)' : 'var(--border)'};background:${isCrit ? 'rgba(239,68,68,.04)' : 'rgba(255,255,255,.01)'};margin-bottom:6px">
-                        <div style="width:38px;height:38px;border-radius:10px;background:${isCrit ? 'rgba(239,68,68,.1)' : 'var(--primary-dim)'};border:1px solid ${isCrit ? 'rgba(239,68,68,.3)' : 'var(--border-glow)'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:${isCrit ? 'var(--danger)' : 'var(--primary)'};font-family:var(--font-mono);flex-shrink:0">${(item.sku||'—').slice(-3)}</div>
-                        <div style="flex:1;min-width:0">
-                            <div style="font-size:12px;font-weight:700;color:var(--text-main);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_esc(item.name || item.sku_obramax || item.sku || '—')}</div>
-                            <div style="display:flex;align-items:center;gap:8px;margin-top:3px">
-                                <span style="font-size:11px;font-weight:700;color:${cor}">${qty} ${item.unit || 'un'}</span>
-                                ${minQty > 0 ? `<span style="font-size:10px;color:var(--text-muted)">mín: ${minQty}</span>` : ''}
-                            </div>
-                            ${pct !== null ? `<div style="height:3px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:5px;width:80px"><div style="width:${pct}%;height:100%;background:${cor};border-radius:2px;transition:width .5s"></div></div>` : ''}
-                        </div>
-                        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
-                            <button class="pos-tag" style="font-size:10px;padding:4px 8px"
-                                    onclick="OBRA.actions.registrarConsumo('${item.sku||item.id}','${_esc(item.name||item.sku||'')}',${qty})">Consumir</button>
-                            ${isCrit ? `<button onclick="OBRA.actions.novoPedido()" style="font-size:10px;padding:4px 8px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:var(--radius-sm);color:var(--danger);cursor:pointer;font-weight:700;white-space:nowrap">⚡ Pedir</button>` : ''}
-                        </div>
-                    </div>`; }).join('')}
-
-                <button onclick="OBRA.actions.novoPedido()"
-                    style="width:100%;margin-top:8px;padding:11px;background:rgba(255,140,0,.06);border:1px dashed rgba(255,140,0,.25);border-radius:var(--radius-md);color:var(--primary);font-size:12px;font-weight:700;cursor:pointer">
-                    🏪 + Pedir mais materiais no Catálogo
-                </button>`}
+                : estoque.map(item => `
+                <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+                    <div style="width:36px;height:36px;border-radius:10px;background:var(--primary-dim);border:1px solid var(--primary-glow);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:var(--primary);font-family:var(--font-mono);flex-shrink:0">${(item.sku||'—').slice(-3)}</div>
+                    <div style="flex:1;min-width:0">
+                        <div style="font-size:12px;font-weight:700;color:var(--text-main);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_esc(item.name || item.sku_obramax || item.sku || '—')}</div>
+                        <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${item.quantity || 0} ${item.unit || 'un'}</div>
+                    </div>
+                    <button class="pos-tag" style="font-size:10px;padding:5px 10px" onclick="OBRA.actions.registrarConsumo('${item.sku||item.id}')">Consumir</button>
+                </div>`).join('')}
         </div>`;
     },
 
@@ -246,62 +187,28 @@ const ObraViews = {
     obraPedidos() {
         const p       = OBRA.state.projetoAtivo;
         const pedidos = OBRA.state.pedidos || [];
-
-        const _stLabel = st => ({
-            pending:   { txt: 'Aguardando',  bg: 'rgba(245,158,11,.12)', cor: 'var(--warning)' },
-            confirmed: { txt: 'Confirmado',  bg: 'rgba(255,140,0,.12)',  cor: 'var(--primary)' },
-            shipped:   { txt: 'Em trânsito', bg: 'rgba(59,130,246,.12)', cor: '#60a5fa'        },
-            delivered: { txt: 'Entregue',    bg: 'rgba(16,185,129,.12)', cor: 'var(--success)' },
-            cancelled: { txt: 'Cancelado',   bg: 'rgba(239,68,68,.12)',  cor: 'var(--danger)'  },
-        }[st] || { txt: st || '—', bg: 'var(--border)', cor: 'var(--text-muted)' });
-
         return `
         <div class="op-card" style="margin-bottom:10px">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
                 <button class="pos-tag" style="font-size:11px;background:rgba(255,255,255,.05);color:var(--text-muted)"
                         onclick="APP.view('obraDetalhe')">← ${p ? _esc(p.name) : 'Obra'}</button>
                 <div class="label" style="flex:1;text-align:center">PEDIDOS</div>
-                <button class="pos-tag" style="font-size:11px;background:var(--primary);color:#000;font-weight:800"
-                        onclick="OBRA.actions.novoPedido()">+ Novo Pedido</button>
+                <button class="pos-tag" style="font-size:11px" onclick="OBRA.actions.novoPedido()">+ Novo</button>
             </div>
-
             ${pedidos.length === 0
-                ? `<div style="text-align:center;padding:32px 16px">
-                       <div style="font-size:40px;margin-bottom:12px">🛒</div>
-                       <div style="font-size:14px;font-weight:700;color:var(--text-main);margin-bottom:6px">Nenhum pedido ainda</div>
-                       <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Compre materiais diretamente do catálogo Obramax com entrega na obra</div>
-                       <button style="padding:11px 22px;background:var(--primary);color:#000;border:none;border-radius:var(--radius-full);font-size:12px;font-weight:800;cursor:pointer"
-                               onclick="OBRA.actions.novoPedido()">
-                           🏪 Abrir Catálogo Obramax
-                       </button>
+                ? `<div style="text-align:center;padding:32px 0">
+                       <div style="font-size:36px;margin-bottom:10px">🛒</div>
+                       <div style="font-size:13px;color:var(--text-muted)">Nenhum pedido realizado.</div>
+                       <button class="btn-action pos-tag" style="margin-top:12px" onclick="OBRA.actions.novoPedido()">Fazer primeiro pedido</button>
                    </div>`
-                : pedidos.map(ped => {
-                    const st = _stLabel(ped.status);
-                    const total = ped.total_amount || ped.total || 0;
-                    const itensQtd = Array.isArray(ped.itens) ? ped.itens.length : 0;
-                    return `
-                    <div style="padding:12px;border-radius:var(--radius-md);border:1px solid var(--border);background:rgba(255,255,255,.02);margin-bottom:8px;cursor:pointer;transition:background .15s"
-                         onclick="OBRA.actions.verPedido('${ped.id || ped.order_number}')"
-                         onmouseover="this.style.background='rgba(255,255,255,.04)'"
-                         onmouseout="this.style.background='rgba(255,255,255,.02)'">
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-                            <span style="font-size:12px;font-weight:800;color:var(--text-main);font-family:var(--font-mono)">${_esc(ped.order_number || ped.id)}</span>
-                            <span style="font-size:10px;font-weight:800;padding:3px 9px;border-radius:var(--radius-full);background:${st.bg};color:${st.cor}">${st.txt}</span>
-                        </div>
-                        <div style="display:flex;justify-content:space-between;align-items:center">
-                            <div style="font-size:11px;color:var(--text-muted)">${_fmtData(ped.created_at)}${itensQtd > 0 ? ` · ${itensQtd} item(s)` : ''}</div>
-                            <div style="font-size:13px;font-weight:800;color:var(--primary)">R$${_fmt(total)}</div>
-                        </div>
-                        ${ped.previsao_entrega ? `<div style="font-size:10px;color:var(--text-muted);margin-top:4px">🚚 Previsão: ${new Date(ped.previsao_entrega+'T00:00:00').toLocaleDateString('pt-BR')}</div>` : ''}
-                    </div>`;
-                  }).join('')
-            }
-
-            ${pedidos.length > 0 ? `
-            <button style="width:100%;margin-top:4px;padding:11px;background:rgba(255,140,0,.06);border:1px dashed rgba(255,140,0,.25);border-radius:var(--radius-md);color:var(--primary);font-size:12px;font-weight:700;cursor:pointer"
-                    onclick="OBRA.actions.novoPedido()">
-                🏪 + Novo Pedido no Catálogo
-            </button>` : ''}
+                : pedidos.map(ped => `
+                <div style="padding:12px;border-radius:var(--radius-md);border:1px solid var(--border);background:rgba(255,255,255,.02);margin-bottom:8px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                        <span style="font-size:12px;font-weight:800;color:var(--text-main);font-family:var(--font-mono)">${_esc(ped.order_number || ped.id)}</span>
+                        <span style="font-size:10px;font-weight:800;padding:3px 8px;border-radius:var(--radius-full);${_statusPedido(ped.status)}">${ped.status || 'pending'}</span>
+                    </div>
+                    <div style="font-size:11px;color:var(--text-muted)">Total: <span style="color:var(--primary);font-weight:700">R$${_fmt(ped.total_amount||0)}</span> · ${_fmtData(ped.created_at)}</div>
+                </div>`).join('')}
         </div>`;
     },
 

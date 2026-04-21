@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#04050b">
+    <title>K11 OMNI ELITE — Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+        :root{
+            --bg:#04050b;--card:rgba(11,12,26,0.88);
+            --border:#1e2040;--primary:#FF8C00;
+            --pd:rgba(255,140,0,0.12);--pg:rgba(255,140,0,0.28);
+            --success:#10B981;--danger:#EF4444;
+            --text:#F0F2FA;--soft:#B4BCCE;--muted:#525970;
+            --mono:'JetBrains Mono',monospace;--ui:'Inter',sans-serif;
+        }
+        html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:var(--ui);overflow:hidden}
+
+        /* 3D canvas background */
+        #three-bg{position:fixed;inset:0;z-index:0;pointer-events:none}
+
+        /* Page */
+        #page{position:relative;z-index:1;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 16px;overflow-y:auto}
+
+        /* Card glass */
+        .card{
+            width:100%;max-width:400px;
+            background:var(--card);
+            backdrop-filter:blur(28px) saturate(170%);
+            -webkit-backdrop-filter:blur(28px) saturate(170%);
+            border:1px solid var(--border);border-radius:20px;
+            padding:32px 28px 28px;position:relative;
+            box-shadow:0 0 0 1px rgba(255,255,255,.025) inset,0 32px 80px rgba(0,0,0,.75),0 0 48px rgba(255,140,0,.06);
+            animation:cardIn .5s cubic-bezier(.16,1,.3,1) both;
+        }
+        .card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;border-radius:20px 20px 0 0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.07),transparent);pointer-events:none}
+        @keyframes cardIn{from{opacity:0;transform:translateY(22px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+
+        /* 3D icon */
+        #icon-canvas{display:block;margin:0 auto 14px;border-radius:50%;animation:aura 2.8s ease-in-out infinite}
+        @keyframes aura{
+            0%,100%{filter:drop-shadow(0 0 6px rgba(255,140,0,.55)) drop-shadow(0 0 14px rgba(255,140,0,.25))}
+            50%{filter:drop-shadow(0 0 12px rgba(255,140,0,.9)) drop-shadow(0 0 30px rgba(255,140,0,.5)) drop-shadow(0 0 50px rgba(255,140,0,.18))}
+        }
+
+        /* Logo */
+        .logo{text-align:center;margin-bottom:26px}
+        .logo-title{font-size:22px;font-weight:900;letter-spacing:-.4px}
+        .logo-title span{color:var(--primary)}
+        .logo-sub{font-size:9px;letter-spacing:3px;color:var(--muted);text-transform:uppercase;margin-top:3px}
+        .logo-badge{display:inline-block;margin-top:10px;font-size:9px;font-weight:800;letter-spacing:1.5px;padding:3px 10px;border-radius:20px;background:rgba(99,102,241,.10);border:1px solid rgba(99,102,241,.28);color:#818cf8;font-family:var(--mono)}
+
+        /* Form */
+        .lbl{font-size:10px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;display:block}
+        .inp{width:100%;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:11px;padding:12px 14px;color:var(--text);font-size:14px;font-family:var(--mono);outline:none;transition:border-color .2s,box-shadow .2s;-webkit-appearance:none}
+        .inp::placeholder{color:var(--muted)}
+        .inp:focus{border-color:rgba(255,140,0,.4);box-shadow:0 0 0 3px rgba(255,140,0,.07)}
+        .inp.error{border-color:rgba(239,68,68,.5);box-shadow:0 0 0 3px rgba(239,68,68,.07);animation:shake .3s ease}
+        @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+        .group{margin-bottom:16px}
+
+        /* Btn */
+        .btn{width:100%;background:var(--primary);border:none;border-radius:11px;padding:14px;color:#000;font-size:13px;font-weight:900;letter-spacing:.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;font-family:var(--ui);transition:opacity .15s,transform .1s,box-shadow .2s;box-shadow:0 4px 20px rgba(255,140,0,.25)}
+        .btn:hover{opacity:.92;box-shadow:0 6px 30px rgba(255,140,0,.35)}
+        .btn:active{transform:scale(.97)}
+        .btn:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+
+        /* Error */
+        .err{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:10px;padding:10px 14px;font-size:12px;color:var(--danger);margin-bottom:16px;display:none}
+        .err.show{display:block}
+
+        /* Divider */
+        .div{display:flex;align-items:center;gap:10px;margin:20px 0;font-size:9px;color:var(--muted);font-weight:800;letter-spacing:1.2px;text-transform:uppercase}
+        .div::before,.div::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--border),transparent)}
+
+        /* Quick btns */
+        .qbtn{display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:12px;cursor:pointer;transition:all .18s;width:100%;text-align:left;margin-bottom:8px}
+        .qbtn:last-child{margin-bottom:0}
+        .qbtn:hover{background:rgba(255,255,255,.04);border-color:var(--border);transform:translateY(-1px)}
+        .qbtn:active{transform:scale(.98)}
+        .qicn{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:17px}
+        .qinfo{flex:1;min-width:0}
+        .qname{font-size:13px;font-weight:700;color:var(--text)}
+        .qrole{font-size:10px;color:var(--muted);margin-top:2px;font-family:var(--mono)}
+        .qarr{color:var(--muted);font-size:16px;transition:transform .15s,color .15s}
+        .qbtn:hover .qarr{transform:translateX(3px);color:var(--primary)}
+
+        /* Spinner */
+        .spin{width:17px;height:17px;border:2px solid rgba(0,0,0,.25);border-top-color:#000;border-radius:50%;animation:rot .7s linear infinite}
+        @keyframes rot{to{transform:rotate(360deg)}}
+
+        /* Footer */
+        .footer{text-align:center;margin-top:18px;font-size:10px;color:var(--muted);font-family:var(--mono);line-height:1.7}
+        .footer a{color:#818cf8;text-decoration:none}
+        .footer a:hover{color:#a5b4fc}
+
+        /* Loading overlay */
+        #load-overlay{position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;opacity:0;pointer-events:none;transition:opacity .3s}
+        #load-overlay.show{opacity:1;pointer-events:all}
+        .load-ring{width:52px;height:52px;border:3px solid rgba(255,140,0,.15);border-top-color:var(--primary);border-radius:50%;animation:rot .8s linear infinite}
+        #load-text{font-size:13px;font-weight:700;color:var(--soft)}
+    </style>
+</head>
+<body>
+
+<!-- 3D Background -->
+<canvas id="three-bg"></canvas>
+
+<!-- Page -->
+<div id="page">
+<div class="card">
+
+    <div class="logo">
+        <canvas id="icon-canvas" width="72" height="72"></canvas>
+        <div class="logo-title">OMNI <span>K11</span></div>
+        <div class="logo-sub">Elite Operational OS</div>
+        <div class="logo-badge">⚡ Acesso Admin</div>
+    </div>
+
+    <div class="err" id="err-box">Senha incorreta. Tente novamente.</div>
+
+    <div id="form-senha">
+        <div class="group">
+            <label class="lbl" for="inp-senha">Senha de Acesso</label>
+            <input class="inp" id="inp-senha" type="password" placeholder="••••••••" autocomplete="current-password" autofocus>
+        </div>
+        <button class="btn" id="btn-entrar" onclick="tentarEntrar()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+            ENTRAR
+        </button>
+    </div>
+
+    <div class="div">acesso rápido</div>
+
+    <div>
+        <button class="qbtn" onclick="entrarComo('gestor')">
+            <div class="qicn" style="background:rgba(255,140,0,.12);border:1px solid rgba(255,140,0,.25)">🛡️</div>
+            <div class="qinfo"><div class="qname">Gestor / Admin</div><div class="qrole">ROLE: SUPER · ACESSO TOTAL</div></div>
+            <span class="qarr">→</span>
+        </button>
+        <button class="qbtn" onclick="entrarComo('colaborador')">
+            <div class="qicn" style="background:rgba(96,165,250,.10);border:1px solid rgba(96,165,250,.2)">⚡</div>
+            <div class="qinfo"><div class="qname">Colaborador</div><div class="qrole">ROLE: COLABORADOR · TURNO A</div></div>
+            <span class="qarr">→</span>
+        </button>
+        <button class="qbtn" onclick="entrarComo('cliente')">
+            <div class="qicn" style="background:rgba(16,185,129,.10);border:1px solid rgba(16,185,129,.2)">🏠</div>
+            <div class="qinfo"><div class="qname">Portal do Cliente</div><div class="qrole">ROLE: CLIENTE · DEMO</div></div>
+            <span class="qarr">→</span>
+        </button>
+    </div>
+
+    <div class="footer">
+        K11 OMNI ELITE v6.0 · Admin Bypass<br>
+        <a href="index.html">← Login padrão</a>
+    </div>
+</div>
+</div>
+
+<!-- Loading -->
+<div id="load-overlay">
+    <div class="load-ring"></div>
+    <div id="load-text">Entrando...</div>
+</div>
+
+<!-- Three.js r128 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+
+// ── CONFIG ────────────────────────────────────────────────────
+const ADMIN_PASSWORD = 'k11admin2025';
+const PROFILES = {
+    gestor:      { nome:'Administrador K11', re:'00000000', role:'super',       pdv:'global',     nivel:10, xp:9999 },
+    colaborador: { nome:'Colaborador Demo',  re:'73000001', role:'colaborador', pdv:'hidraulica', nivel:3,  xp:2400 },
+    cliente:     { nome:'Cliente Demo',      re:'cli_demo', role:'cliente',     pdv:'global',     nivel:1,  xp:0    },
+};
+
+// ── 3D BACKGROUND — ParticleNetworkBackground fiel ────────────
+(function() {
+    if (!window.THREE) return;
+    const canvas   = document.getElementById('three-bg');
+    const W = window.innerWidth, H = window.innerHeight;
+    const renderer = new THREE.WebGLRenderer({ canvas, alpha:true, antialias:false, powerPreference:'low-power' });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+    renderer.setSize(W, H);
+    renderer.setClearColor(0x000000, 0);
+    const scene  = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(60, W/H, 0.1, 100);
+    camera.position.set(0, 0, 10);
+    const C = new THREE.Color(0xFF8C00);
+
+    // 1. Grid de boxes (cC component)
+    const grpGrid = new THREE.Group();
+    const bGeo = new THREE.BoxGeometry(.02,.02,.02);
+    const bMat = new THREE.MeshBasicMaterial({ color:C, transparent:true, opacity:.12 });
+    for (let x=-6; x<=6; x+=1.5) for (let z=-6; z<=6; z+=1.5) {
+        const m = new THREE.Mesh(bGeo, bMat); m.position.set(x,-4,z); grpGrid.add(m);
+    }
+    scene.add(grpGrid);
+
+    // 2. Falling particles (hC component)
+    const N=100; const pPos = new Float32Array(N*3);
+    for (let i=0;i<N;i++) { pPos[i*3]=(Math.random()-.5)*16; pPos[i*3+1]=Math.random()*16-8; pPos[i*3+2]=(Math.random()-.5)*16; }
+    const ptGeo = new THREE.BufferGeometry();
+    ptGeo.setAttribute('position', new THREE.BufferAttribute(pPos,3));
+    const ptMat = new THREE.PointsMaterial({color:C,size:.05,transparent:true,opacity:.35,sizeAttenuation:true});
+    scene.add(new THREE.Points(ptGeo, ptMat));
+
+    // 3. Connection lines (uC component)
+    const nodes=[];
+    for (let x=-5;x<=5;x+=2.5) for (let z=-5;z<=5;z+=2.5) nodes.push(new THREE.Vector3(x,(Math.random()-.5)*6,z));
+    const linePts=[];
+    for (let i=0;i<nodes.length;i++) for (let j=i+1;j<nodes.length;j++) if (nodes[i].distanceTo(nodes[j])<4) linePts.push(nodes[i],nodes[j]);
+    if (linePts.length) {
+        const lGeo = new THREE.BufferGeometry().setFromPoints(linePts);
+        scene.add(new THREE.LineSegments(lGeo, new THREE.LineBasicMaterial({color:C,transparent:true,opacity:.08})));
+    }
+
+    let t=0;
+    (function loop(){
+        requestAnimationFrame(loop); t+=.016;
+        const pa=ptGeo.attributes.position.array;
+        for (let i=0;i<N;i++) {
+            pa[i*3+1]-=.02;
+            if (pa[i*3+1]<-8) { pa[i*3+1]=8; pa[i*3]=(Math.random()-.5)*16; pa[i*3+2]=(Math.random()-.5)*16; }
+        }
+        ptGeo.attributes.position.needsUpdate=true;
+        grpGrid.rotation.y=t*.03;
+        camera.position.x=Math.sin(t*.08)*.5;
+        camera.position.y=Math.sin(t*.05)*.3;
+        camera.lookAt(0,0,0);
+        renderer.render(scene,camera);
+    })();
+
+    window.addEventListener('resize',()=>{
+        const W=innerWidth,H=innerHeight; renderer.setSize(W,H); camera.aspect=W/H; camera.updateProjectionMatrix();
+    });
+})();
+
+// ── 3D ICON — fiel ao fC() do ParticleNetwork ─────────────────
+(function() {
+    if (!window.THREE) return;
+    const canvas   = document.getElementById('icon-canvas');
+    const renderer = new THREE.WebGLRenderer({ canvas, alpha:true, antialias:true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(72,72);
+    renderer.setClearColor(0x000000,0);
+    const scene  = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(50,1,.1,50);
+    camera.position.set(0,0,4.5);
+    scene.add(new THREE.AmbientLight(0xffffff,.5));
+    const pt = new THREE.PointLight(0xffffff,.3); pt.position.set(5,5,5); scene.add(pt);
+
+    const orange = new THREE.Color(0xFF8C00);
+    const orangeHi = orange.clone().multiplyScalar(1.5);
+    const grp = new THREE.Group(); grp.position.z=-2;
+
+    // dodecahedron wireframe (externo)
+    grp.add(new THREE.Mesh(
+        new THREE.DodecahedronGeometry(.8,0),
+        new THREE.MeshStandardMaterial({color:orange,emissive:orange,emissiveIntensity:.3,transparent:true,opacity:.15,wireframe:true})
+    ));
+    // icosahedron sólido (interno)
+    grp.add(new THREE.Mesh(
+        new THREE.IcosahedronGeometry(.4,0),
+        new THREE.MeshStandardMaterial({color:orange,emissive:orangeHi,emissiveIntensity:.6,transparent:true,opacity:.4})
+    ));
+    // 3 tori orbitais
+    for (let n=0;n<3;n++) {
+        const t = new THREE.Mesh(
+            new THREE.TorusGeometry(1.2+n*.15,.008,8,64),
+            new THREE.MeshBasicMaterial({color:orange,transparent:true,opacity:.25-n*.05})
+        );
+        t.rotation.set(n*1.05, n*.7, 0);
+        grp.add(t);
+    }
+    scene.add(grp);
+
+    let t=0;
+    (function loop(){
+        requestAnimationFrame(loop); t+=.016;
+        grp.rotation.y=t*.3;
+        grp.rotation.x=Math.sin(t*.2)*.15;
+        grp.position.y=Math.sin(t*.5)*.2;
+        renderer.render(scene,camera);
+    })();
+})();
+
+// ── FORM ──────────────────────────────────────────────────────
+document.getElementById('inp-senha').addEventListener('keydown', e => {
+    if (e.key==='Enter') tentarEntrar();
+});
+
+function tentarEntrar() {
+    const senha  = document.getElementById('inp-senha').value.trim();
+    const errBox = document.getElementById('err-box');
+    const inp    = document.getElementById('inp-senha');
+    const btn    = document.getElementById('btn-entrar');
+    if (!senha) { inp.classList.add('error'); inp.focus(); return; }
+    if (senha !== ADMIN_PASSWORD) {
+        errBox.classList.add('show'); inp.classList.add('error'); inp.value=''; inp.focus();
+        setTimeout(()=>{ errBox.classList.remove('show'); inp.classList.remove('error'); }, 3000);
+        return;
+    }
+    btn.disabled=true; btn.innerHTML='<div class="spin"></div> Verificando...';
+    setTimeout(()=>entrarComo('gestor'), 600);
+}
+
+function entrarComo(tipo) {
+    const p = PROFILES[tipo]; if (!p) return;
+    const payload = {sub:p.re,nome:p.nome,role:p.role,pdv:p.pdv,iat:Math.floor(Date.now()/1000),exp:Math.floor(Date.now()/1000)+(7*24*60*60)};
+    const jwt = `${btoa(JSON.stringify({alg:'HS256',typ:'JWT'}))}.${btoa(JSON.stringify(payload))}.admin_bypass`;
+    try {
+        sessionStorage.setItem('k11_jwt', jwt);
+        sessionStorage.setItem('k11_user', JSON.stringify({nome:p.nome,re:p.re,role:p.role,pdv:p.pdv,nivel:p.nivel,xp:p.xp}));
+        sessionStorage.setItem('k11_mode','ultra');
+        localStorage.setItem('k11_onboarding_v4','1');
+    } catch(e){}
+    const names={gestor:'Gestor / Admin',colaborador:'Colaborador',cliente:'Portal do Cliente'};
+    document.getElementById('load-text').innerHTML=`Entrando como <span style="color:var(--primary)">${names[tipo]||tipo}</span>...`;
+    document.getElementById('load-overlay').classList.add('show');
+    setTimeout(()=>{ window.location.href='dashboard.html'; }, 900);
+}
+</script>
+</body>
+</html>

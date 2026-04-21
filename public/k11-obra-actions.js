@@ -442,118 +442,18 @@ const OBRA = {
         },
 
         novoPedido() {
-            // Abre catálogo de produtos dentro do contexto da obra atual
-            const obraId   = OBRA.state.projetoAtivo?.id;
-            const obraNome = OBRA.state.projetoAtivo?.name;
-
-            // Inicializa o estado do catálogo voltado para essa obra
-            if (window._K11CAT) {
-                window._K11CAT.loaded       = false;
-                window._K11CAT.secaoAtiva   = null;
-                window._K11CAT.subSecaoAtiva = null;
-                window._K11CAT.busca        = '';
-            }
-
-            // Exibe modal de confirmação se houver obra ativa
-            if (obraId) {
-                APP.ui.toast(`🛒 Catálogo aberto para "${obraNome}"`, 'success');
-            }
-
-            // Navega para o catálogo do portal do cliente
-            APP.view('clienteCatalogo');
+            APP.ui.toast('Módulo de pedido — em breve via Obramax API', 'info');
         },
 
         verPedido(pedidoId) {
-            if (!pedidoId) return;
-            const ped = (OBRA.state.pedidos || []).find(p => p.id === pedidoId || p.order_number === pedidoId);
-            if (!ped) {
-                APP.ui.toast('Pedido não encontrado.', 'error');
-                return;
-            }
-
-            // Monta modal com detalhe do pedido
-            const itens  = Array.isArray(ped.itens) ? ped.itens : [];
-            const total  = ped.total_amount || ped.total || 0;
-            const status = ped.status || 'pending';
-            const statusLabels = {
-                pending:   { txt: 'Aguardando',   cor: 'var(--warning)' },
-                confirmed: { txt: 'Confirmado',   cor: 'var(--primary)' },
-                shipped:   { txt: 'Em trânsito',  cor: 'var(--primary)' },
-                delivered: { txt: 'Entregue',     cor: 'var(--success)' },
-                cancelled: { txt: 'Cancelado',    cor: 'var(--danger)'  },
-            };
-            const st = statusLabels[status] || { txt: status, cor: 'var(--text-muted)' };
-
-            const conteudo = `
-            <div style="padding:16px;max-height:75vh;overflow-y:auto">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-                    <div>
-                        <div style="font-size:14px;font-weight:900;color:var(--text-main);font-family:var(--font-mono)">${ped.order_number || ped.id}</div>
-                        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${new Date(ped.created_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'short',year:'numeric'})}</div>
-                    </div>
-                    <span style="font-size:11px;font-weight:800;padding:4px 10px;border-radius:var(--radius-full);background:rgba(0,0,0,.1);color:${st.cor}">${st.txt}</span>
-                </div>
-
-                ${itens.length > 0 ? `
-                <div style="margin-bottom:14px">
-                    <div style="font-size:10px;font-weight:800;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">ITENS DO PEDIDO</div>
-                    ${itens.map(i => `
-                    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
-                        <div style="flex:1;min-width:0">
-                            <div style="font-size:12px;font-weight:600;color:var(--text-main);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${i.name || i.sku || '—'}</div>
-                            <div style="font-size:10px;color:var(--text-muted)">${i.sku||''} · Qtd: ${i.qty||i.quantity||1} ${i.unit||'un'}</div>
-                        </div>
-                        <div style="font-size:12px;font-weight:700;color:var(--primary);flex-shrink:0;margin-left:10px">
-                            R$ ${((i.subtotal||0)||(( i.price_unit||i.price||0)*(i.qty||1))).toLocaleString('pt-BR',{minimumFractionDigits:2})}
-                        </div>
-                    </div>`).join('')}
-                </div>` : `<div style="font-size:12px;color:var(--text-muted);padding:12px 0">Sem detalhes de itens.</div>`}
-
-                <div style="background:var(--primary-dim);border:1px solid var(--border-glow);border-radius:var(--radius-md);padding:12px">
-                    <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:800">
-                        <span style="color:var(--text-soft)">Total do pedido</span>
-                        <span style="color:var(--primary)">R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>
-                    </div>
-                    ${ped.endereco_entrega ? `<div style="font-size:10px;color:var(--text-muted);margin-top:6px">📍 ${ped.endereco_entrega}</div>` : ''}
-                    ${ped.previsao_entrega ? `<div style="font-size:10px;color:var(--text-muted);margin-top:4px">🚚 Previsão: ${new Date(ped.previsao_entrega+'T00:00:00').toLocaleDateString('pt-BR')}</div>` : ''}
-                </div>
-            </div>
-            <div style="padding:0 16px 16px;display:flex;gap:8px">
-                <button onclick="document.getElementById('k11-modal').style.display='none'"
-                    style="flex:1;padding:11px;border:1px solid var(--border-mid);border-radius:var(--radius-md);background:transparent;color:var(--text-soft);font-size:12px;font-weight:700;cursor:pointer">
-                    Fechar
-                </button>
-            </div>`;
-
-            // Usa o modal global do K11 se disponível
-            const modal = document.getElementById('k11-modal');
-            if (modal) {
-                modal.innerHTML = `
-                <div style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:flex-end;justify-content:center" onclick="if(event.target===this)this.style.display='none'">
-                    <div style="width:100%;max-width:480px;background:var(--bg);border-radius:var(--radius-md) var(--radius-md) 0 0;overflow:hidden;animation:slideUp .2s ease">
-                        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px;border-bottom:1px solid var(--border)">
-                            <div style="font-size:13px;font-weight:900;color:var(--text-main)">Detalhes do Pedido</div>
-                            <button onclick="this.closest('[style*=fixed]').style.display='none'" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer">✕</button>
-                        </div>
-                        ${conteudo}
-                    </div>
-                </div>`;
-                modal.style.display = 'block';
-            } else {
-                APP.ui.toast(`Pedido ${ped.order_number || ped.id} — Total: R$ ${total.toFixed(2)}`, 'info');
-            }
+            const ped = OBRA.state.pedidos.find(p => p.id === pedidoId);
+            if (!ped) return;
+            APP.ui.toast(`Pedido ${ped.order_number} — R$${ped.total_amount}`, 'info');
         },
 
         async pedirMateriais(faseId) {
-            // Abre catálogo filtrado para materiais de construção
-            if (window._K11CAT) {
-                window._K11CAT.loaded        = false;
-                window._K11CAT.secaoAtiva    = null;
-                window._K11CAT.subSecaoAtiva = null;
-                window._K11CAT.busca         = '';
-            }
-            APP.ui.toast('📦 Abrindo catálogo para solicitar materiais...', 'info');
-            setTimeout(() => APP.view('clienteCatalogo'), 400);
+            APP.ui.toast('Gerando lista de materiais para pedido...', 'info');
+            APP.view('obraPedidos');
         },
     },
 

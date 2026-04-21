@@ -1,276 +1,402 @@
 /**
- * K11 OMNI ELITE — Mission Engine (Frontend)
- * ════════════════════════════════════════════
- * Marketplace de missões: criação, matching por afinidade, aceitação.
- * Depende de: k11-skill-system.js, k11-config.js
- *
- * Expõe: K11MissionEngine (global)
+ * K11 MISSION ENGINE — Marketplace Dinâmico de Tarefas
+ * ═════════════════════════════════════════════════════════════════
+ * Sistema de distribuição inteligente de missões baseado em
+ * perfis de habilidades, requisitos de nível e afinidade arquetípica.
+ * 
+ * v1.0 - Núcleo do ecossistema K11 Omni
  */
 
 'use strict';
 
 const K11MissionEngine = (() => {
 
-    // ── TIPOS DE MISSÃO ───────────────────────────────────────────
+    // ── TIPOS DE MISSÃO ─────────────────────────────────────────
     const MISSION_TYPES = {
+        // Sustentação
         SUSTENTACAO: {
-            id:          'sustentacao',
-            name:        'Sustentação',
-            icon:        '⚙️',
-            archetype:   'executor',
-            baseXP:      100,
-            risk:        'low',
-            color:       '#FF8C00',
-            description: 'Manutenção e operação do sistema',
+            id: 'sustentacao',
+            name: 'Missão de Sustentação',
+            icon: '⚙️',
+            baseXPReward: 100,
+            targetArchetype: 'executor',
+            riskLevel: 'baixo',
+            description: 'Tarefas de manutenção e operação contínua do sistema',
         },
+        
+        // Descoberta
         DESCOBERTA: {
-            id:          'descoberta',
-            name:        'Descoberta',
-            icon:        '🔍',
-            archetype:   'creator',
-            baseXP:      250,
-            risk:        'medium',
-            color:       '#A78BFA',
-            description: 'Pesquisa e novas soluções',
+            id: 'descoberta',
+            name: 'Missão de Descoberta',
+            icon: '🔍',
+            baseXPReward: 250,
+            targetArchetype: 'creator',
+            riskLevel: 'medio',
+            description: 'Exploração de novas soluções e melhorias de processo',
         },
+        
+        // Crítica
         CRITICA: {
-            id:          'critica',
-            name:        'Crítica',
-            icon:        '⚠️',
-            archetype:   'analyst',
-            baseXP:      500,
-            risk:        'high',
-            color:       '#F87171',
-            description: 'Análise crítica — nível 3+ exigido',
+            id: 'critica',
+            name: 'Missão Crítica',
+            icon: '⚠️',
+            baseXPReward: 500,
+            targetArchetype: 'analyst',
+            riskLevel: 'alto',
+            description: 'Tarefas que exigem alta precisão e análise',
+            minLevel: 3,
         },
+        
+        // Suporte
         SUPORTE: {
-            id:          'suporte',
-            name:        'Suporte',
-            icon:        '🤝',
-            archetype:   'diplomat',
-            baseXP:      150,
-            risk:        'low',
-            color:       '#34D399',
-            description: 'Assistência e atendimento',
+            id: 'suporte',
+            name: 'Missão de Suporte',
+            icon: '🤝',
+            baseXPReward: 150,
+            targetArchetype: 'diplomat',
+            riskLevel: 'baixo',
+            description: 'Assistência ao cliente e suporte interno',
         },
+
+        // Mentoria
         MENTORIA: {
-            id:          'mentoria',
-            name:        'Mentoria',
-            icon:        '👨‍🏫',
-            archetype:   'diplomat',
-            baseXP:      200,
-            risk:        'medium',
-            color:       '#60A5FA',
-            description: 'Ensinar e desenvolver novatos — nível 5+ exigido',
+            id: 'mentoria',
+            name: 'Missão de Mentoria',
+            icon: '👨‍🏫',
+            baseXPReward: 200,
+            targetArchetype: 'diplomat',
+            riskLevel: 'medio',
+            description: 'Ensinar outros usuários com nível inferior',
+            minLevel: 5,
         },
     };
 
-    // ── CLASSE MISSION ────────────────────────────────────────────
-    class Mission {
-        constructor(config) {
-            this.id          = config.id || `mission_${Date.now()}`;
-            this.title       = config.title;
-            this.description = config.description || '';
-            this.type        = config.type || MISSION_TYPES.SUSTENTACAO;
-            this.compartment = config.compartment || 'geral';
-            this.requirements = {
-                minLevel:           config.requirements?.minLevel || 1,
-                requiredAttributes: config.requirements?.requiredAttributes || {},
-                targetArchetype:    config.requirements?.targetArchetype || this.type.archetype,
-                deadlineDays:       config.requirements?.deadlineDays || 7,
-            };
-            this.baseXPReward   = config.baseXPReward || this.type.baseXP;
-            this.xpMultiplier   = config.xpMultiplier || 1.0;
-            this.status         = 'draft';
-            this.assignee       = null;
-            this.mentor         = null;
-            this.createdAt      = new Date().toISOString();
-            this.publishedAt    = null;
-            this.completedAt    = null;
-            this.deadline       = null;
+    // ── REQUISITOS DE MISSÃO ────────────────────────────────────
+    class MissionRequirements {
+        constructor(config = {}) {
+            this.minLevel = config.minLevel || 1;
+            this.requiredAttributes = config.requiredAttributes || {};
+            this.targetArchetype = config.targetArchetype;
+            this.mandatorySpecializations = config.mandatorySpecializations || [];
+            this.maxTeamSize = config.maxTeamSize || 1;
+            this.deadlineDays = config.deadlineDays || 7;
         }
 
-        /** Calcula o score de afinidade (0-100) de um UserProfile com esta missão */
-        checkAffinity(userProfile) {
-            const { minLevel, requiredAttributes, targetArchetype } = this.requirements;
-            const scores = userProfile.getArchetypeScores();
-            const attrs  = userProfile.attributes;
-            const issues = [];
-
-            let affinity    = 50; // base
-            let canAccept   = true;
-
-            // Nível mínimo
-            if (userProfile.level < minLevel) {
-                affinity -= 30;
-                canAccept = false;
-                issues.push(`Nível mínimo ${minLevel} requerido (você: ${userProfile.level})`);
-            } else {
-                affinity += Math.min(20, (userProfile.level - minLevel) * 5);
+        // Verifica se um usuário atende aos requisitos
+        validate(userProfile) {
+            // Verifica nível
+            if (userProfile.level < this.minLevel) {
+                return {
+                    isValid: false,
+                    reason: `Nível insuficiente. Requerido: ${this.minLevel}, Seu nível: ${userProfile.level}`,
+                };
             }
 
-            // Atributos requeridos
-            for (const [attr, minVal] of Object.entries(requiredAttributes)) {
-                const userVal = attrs[attr] || 0;
-                if (userVal < minVal) {
-                    affinity -= 15;
-                    canAccept = false;
-                    issues.push(`${attr}: ${userVal}/${minVal}`);
-                } else {
-                    affinity += Math.min(5, Math.floor((userVal - minVal) / 5));
+            // Verifica atributos
+            for (const [attr, requiredValue] of Object.entries(this.requiredAttributes)) {
+                const userValue = userProfile.attributes[attr] || 0;
+                if (userValue < requiredValue) {
+                    return {
+                        isValid: false,
+                        reason: `Atributo ${attr} insuficiente. Requerido: ${requiredValue}, Seu valor: ${userValue}`,
+                    };
                 }
             }
 
-            // Alinhamento de arquétipo
-            if (targetArchetype && scores[targetArchetype] > 60) {
-                affinity += 15;
+            // Verifica especializações
+            for (const spec of this.mandatorySpecializations) {
+                if (!userProfile.specializations.includes(spec)) {
+                    return {
+                        isValid: false,
+                        reason: `Especialização faltando: ${spec}`,
+                    };
+                }
             }
 
-            affinity = Math.max(0, Math.min(100, affinity));
-
-            return {
-                affinity,
-                canAccept,
-                issues,
-                needsMentor: canAccept === false && userProfile.level >= 1 && userProfile.level < minLevel,
-                finalXP:     Math.round(this.baseXPReward * this.xpMultiplier),
-            };
+            return { isValid: true };
         }
 
+        // Calcula a afinidade (quanto melhor o perfil, mais afinidade)
+        calculateAffinity(userProfile) {
+            let affinityScore = 50; // Base 50%
+
+            // Bônus de nível
+            affinityScore += (userProfile.level - this.minLevel) * 5;
+
+            // Bônus por atributos excedentes
+            let excedentXP = 0;
+            for (const [attr, required] of Object.entries(this.requiredAttributes)) {
+                const userValue = userProfile.attributes[attr] || 0;
+                excedentXP += Math.max(0, userValue - required);
+            }
+            affinityScore += Math.min(excedentXP / 5, 20); // Max 20 pontos
+
+            // Bônus por arquétipo alinhado
+            if (this.targetArchetype) {
+                const primaryArch = userProfile.getPrimaryArchetype();
+                if (primaryArch?.id === this.targetArchetype) {
+                    affinityScore += 15;
+                }
+            }
+
+            return Math.min(affinityScore, 100); // Cap em 100
+        }
+
+        toJSON() {
+            return {
+                minLevel: this.minLevel,
+                requiredAttributes: this.requiredAttributes,
+                targetArchetype: this.targetArchetype,
+                mandatorySpecializations: this.mandatorySpecializations,
+                maxTeamSize: this.maxTeamSize,
+                deadlineDays: this.deadlineDays,
+            };
+        }
+    }
+
+    // ── ESTRUTURA DA MISSÃO ─────────────────────────────────────
+    class Mission {
+        constructor(missionConfig) {
+            this.id = missionConfig.id || `mission_${Date.now()}`;
+            this.title = missionConfig.title;
+            this.description = missionConfig.description;
+            this.type = missionConfig.type; // MISSION_TYPES
+            this.requirements = new MissionRequirements(missionConfig.requirements);
+            
+            this.createdAt = new Date();
+            this.deadline = new Date(Date.now() + this.requirements.deadlineDays * 24 * 60 * 60 * 1000);
+            
+            // Status: draft, published, in_progress, completed, cancelled
+            this.status = 'draft';
+            
+            // Recompensas
+            this.baseXPReward = missionConfig.baseXPReward || this.type.baseXPReward;
+            this.xpMultiplier = missionConfig.xpMultiplier || 1.0; // Pode ser ajustado por urgência
+            this.bonusReward = missionConfig.bonusReward || null;
+            
+            // Participantes
+            this.assignedUsers = [];
+            this.maxParticipants = this.requirements.maxTeamSize;
+            
+            // Mentoria
+            this.mentorId = missionConfig.mentorId || null;
+            this.isMentorshipMission = missionConfig.isMentorshipMission || false;
+            
+            // Compartimento (área de negócio)
+            this.compartment = missionConfig.compartment || 'geral';
+        }
+
+        // Publica a missão para seleção
         publish() {
-            if (this.status !== 'draft') throw new Error('Missão já foi publicada.');
-            this.status      = 'published';
-            this.publishedAt = new Date().toISOString();
-            const d          = new Date();
-            d.setDate(d.getDate() + this.requirements.deadlineDays);
-            this.deadline = d.toISOString();
+            this.status = 'published';
+            this.publishedAt = new Date();
         }
 
+        // Verifica afinidade de um usuário para esta missão
+        checkAffinity(userProfile) {
+            const validation = this.requirements.validate(userProfile);
+            if (!validation.isValid) {
+                return {
+                    canAccept: false,
+                    affinity: 0,
+                    reason: validation.reason,
+                };
+            }
+
+            const affinity = this.requirements.calculateAffinity(userProfile);
+            return {
+                canAccept: true,
+                affinity: affinity,
+                reason: `Afinidade: ${affinity}%`,
+            };
+        }
+
+        // Adiciona um usuário à missão
         assignUser(userId, mentorId = null) {
-            if (this.status !== 'published') throw new Error('Missão não está publicada.');
-            this.assignee  = userId;
-            this.mentor    = mentorId || null;
-            this.status    = 'in_progress';
+            if (this.assignedUsers.length >= this.maxParticipants) {
+                return { success: false, reason: 'Missão cheia' };
+            }
+
+            if (this.assignedUsers.find(u => u.userId === userId)) {
+                return { success: false, reason: 'Usuário já atribuído' };
+            }
+
+            this.assignedUsers.push({
+                userId,
+                assignedAt: new Date(),
+                mentorId: mentorId,
+                status: 'in_progress',
+                completedAt: null,
+            });
+
+            return { success: true };
         }
 
-        complete(userId) {
-            if (this.assignee !== userId) throw new Error('Você não está atribuído a esta missão.');
-            this.status      = 'completed';
-            this.completedAt = new Date().toISOString();
-            return {
-                xpReward:    Math.round(this.baseXPReward * this.xpMultiplier),
-                mentorXP:    this.mentor ? Math.round(this.baseXPReward * 0.3) : 0,
-                apprenticeXP:this.mentor ? Math.round(this.baseXPReward * 0.75) : this.baseXPReward,
-            };
+        // Marca a missão como completa para um usuário
+        completeForUser(userId, feedback = {}) {
+            const assignment = this.assignedUsers.find(u => u.userId === userId);
+            if (!assignment) {
+                return { success: false, reason: 'Usuário não atribuído' };
+            }
+
+            assignment.status = 'completed';
+            assignment.completedAt = new Date();
+            assignment.feedback = feedback;
+
+            // Verifica se todos completaram
+            if (this.assignedUsers.every(u => u.status === 'completed')) {
+                this.status = 'completed';
+            }
+
+            return { success: true };
         }
 
-        toCard(userProfile = null) {
-            const affinity = userProfile ? this.checkAffinity(userProfile) : null;
+        // Calcula XP com base em fatores
+        calculateFinalXP(userProfile) {
+            let finalXP = this.baseXPReward * this.xpMultiplier;
+
+            // Bônus por nivel excedente (aprendiz com mentor)
+            if (this.isMentorshipMission && this.mentorId) {
+                finalXP *= 0.75; // Reduz XP do aprendiz
+                finalXP *= 1.25; // Mas aumenta o do mentor no futuro
+            }
+
+            // Bônus por entrega antecipada
+            const daysLeft = (this.deadline - new Date()) / (24 * 60 * 60 * 1000);
+            if (daysLeft > this.requirements.deadlineDays * 0.5) {
+                finalXP *= 1.15;
+            }
+
+            return Math.round(finalXP);
+        }
+
+        toJSON() {
             return {
-                id:          this.id,
-                title:       this.title,
+                id: this.id,
+                title: this.title,
                 description: this.description,
-                type:        this.type,
+                type: this.type.id,
+                requirements: this.requirements.toJSON(),
+                status: this.status,
+                baseXPReward: this.baseXPReward,
+                xpMultiplier: this.xpMultiplier,
+                deadline: this.deadline,
+                assignedUsers: this.assignedUsers,
+                mentorId: this.mentorId,
+                isMentorshipMission: this.isMentorshipMission,
                 compartment: this.compartment,
-                deadline:    this.deadline,
-                requirements:this.requirements,
-                xpReward:    Math.round(this.baseXPReward * this.xpMultiplier),
-                status:      this.status,
-                affinity,
             };
         }
     }
 
-    // ── MARKETPLACE ───────────────────────────────────────────────
-    class Marketplace {
+    // ── MARKETPLACE DE MISSÕES ──────────────────────────────────
+    class MissionMarketplace {
         constructor() {
-            this._missions = [];
+            this.missions = new Map();
+            this.userMatches = new Map(); // Recomendações por usuário
         }
 
-        add(mission) {
-            this._missions.push(mission);
+        // Adiciona uma nova missão
+        addMission(missionConfig) {
+            const mission = new Mission(missionConfig);
+            this.missions.set(mission.id, mission);
+            return mission;
         }
 
-        /** Retorna missões publicadas ordenadas por afinidade */
-        getRecommendations(userProfile, limit = 10) {
-            return this._missions
-                .filter(m => m.status === 'published')
-                .map(m => ({ mission: m, ...m.checkAffinity(userProfile) }))
-                .sort((a, b) => b.affinity - a.affinity)
-                .slice(0, limit)
-                .map(({ mission, affinity, canAccept, issues, needsMentor, finalXP }) => ({
-                    ...mission.toCard(userProfile),
-                    affinity,
-                    canAccept,
-                    issues,
-                    needsMentor,
-                    finalXP,
-                }));
+        // Publica uma missão
+        publishMission(missionId) {
+            const mission = this.missions.get(missionId);
+            if (mission) {
+                mission.publish();
+                this._updateMatchesForMission(missionId);
+                return true;
+            }
+            return false;
         }
 
+        // Encontra as melhores missões para um usuário
+        findBestMissions(userProfile, limit = 5) {
+            const matches = [];
+
+            for (const mission of this.missions.values()) {
+                if (mission.status !== 'published') continue;
+
+                const affinity = mission.checkAffinity(userProfile);
+                if (affinity.canAccept) {
+                    matches.push({
+                        mission,
+                        affinity: affinity.affinity,
+                    });
+                }
+            }
+
+            // Ordena por afinidade decrescente
+            matches.sort((a, b) => b.affinity - a.affinity);
+
+            return matches.slice(0, limit).map(m => ({
+                ...m.mission.toJSON(),
+                affinityScore: m.affinity,
+            }));
+        }
+
+        // Recomenda um mentor para aprendiz
+        findMentorForNovice(novaUserProfile) {
+            if (novaUserProfile.level >= 5) {
+                return null; // Não é mais novato
+            }
+
+            const potentialMentors = [];
+
+            // Procura usuários que completaram muitas missões
+            // Esta é uma simplificação - em produção, seria baseado em dados
+            // de usuários do sistema
+
+            return potentialMentors;
+        }
+
+        // Atualiza recomendações ao publicar uma missão
+        _updateMatchesForMission(missionId) {
+            // Em produção, isso consultaria o banco de dados
+            // e atualizaria recomendações para todos os usuários
+        }
+
+        // Obtém estatísticas do marketplace
         getStats() {
-            const all = this._missions;
+            const published = Array.from(this.missions.values()).filter(m => m.status === 'published').length;
+            const completed = Array.from(this.missions.values()).filter(m => m.status === 'completed').length;
+            const inProgress = Array.from(this.missions.values()).filter(m => m.status === 'in_progress').length;
+
             return {
-                total:      all.length,
-                published:  all.filter(m => m.status === 'published').length,
-                inProgress: all.filter(m => m.status === 'in_progress').length,
-                completed:  all.filter(m => m.status === 'completed').length,
-                byType:     Object.fromEntries(
-                    Object.values(MISSION_TYPES).map(t => [t.id, all.filter(m => m.type.id === t.id).length])
-                ),
+                total: this.missions.size,
+                published,
+                completed,
+                inProgress,
+                drafted: this.missions.size - published,
             };
         }
     }
 
-    // ── API PÚBLICA ───────────────────────────────────────────────
+    // ── API PÚBLICA ─────────────────────────────────────────────
     return {
-        MISSION_TYPES,
+        // Classes
         Mission,
-        Marketplace,
+        MissionRequirements,
+        MissionMarketplace,
 
-        createMission(config) {
-            return new Mission(config);
-        },
+        // Constantes
+        MISSION_TYPES,
 
-        createMarketplace() {
-            return new Marketplace();
-        },
+        // Factory methods
+        createMission: (config) => new Mission(config),
+        createMarketplace: () => new MissionMarketplace(),
 
-        /** Carrega missões recomendadas do servidor */
-        async fetchRecommendations(userId) {
-            try {
-                const res  = await K11Auth.fetch(`/api/missions/recommendations/${userId}`);
-                const data = await res?.json();
-                return data?.ok ? (data.data || []) : [];
-            } catch (e) {
-                console.warn('[K11MissionEngine] fetchRecommendations falhou:', e.message);
-                return [];
-            }
-        },
-
-        /** Aceita missão no servidor */
-        async acceptMission(missionId, userId) {
-            try {
-                const res  = await K11Auth.fetch(`/api/missions/${missionId}/assign/${userId}`, { method: 'POST' });
-                const data = await res?.json();
-                return data?.ok || false;
-            } catch (e) {
-                console.warn('[K11MissionEngine] acceptMission falhou:', e.message);
-                return false;
-            }
-        },
-
-        /** Conclui missão no servidor */
-        async completeMission(missionId, userId) {
-            try {
-                const res  = await K11Auth.fetch(`/api/missions/${missionId}/complete/${userId}`, { method: 'POST' });
-                const data = await res?.json();
-                return data?.ok ? data.xp : null;
-            } catch (e) {
-                console.warn('[K11MissionEngine] completeMission falhou:', e.message);
-                return null;
-            }
-        },
+        // Info
+        getMissionType: (id) => MISSION_TYPES[id.toUpperCase()],
+        getAllMissionTypes: () => Object.values(MISSION_TYPES),
     };
-
 })();
+
+// Exporta para módulos se disponível
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = K11MissionEngine;
+}

@@ -380,20 +380,20 @@ const K11AuthUI = (() => {
             </button>
             <div class="auth-portal-badge green">🏠 Portal do Cliente</div>
             <div class="auth-card-title">Bem-vindo</div>
-            <div class="auth-card-sub">Acesse suas obras e orçamentos com seu email.</div>
+            <div class="auth-card-sub">Use seu email ou LDAP para acessar suas obras e orçamentos.</div>
 
             <div class="auth-field">
-                <label class="auth-label">Email</label>
+                <label class="auth-label">Email ou LDAP</label>
                 <div class="auth-input-wrap">
-                    <input id="f-email-cliente" class="auth-input green-focus" type="email"
-                           placeholder="seu@email.com" autocomplete="email">
+                    <input id="f-email-cliente" class="auth-input green-focus" type="text"
+                           placeholder="seu@email.com ou 73xxxxxx" autocomplete="username">
                     <span class="auth-input-icon" id="icon-email-cli"></span>
                 </div>
                 <div class="auth-field-error" id="err-email-cli"></div>
             </div>
 
             <div class="auth-field">
-                <label class="auth-label">Senha</label>
+                <label class="auth-label">Senha ou PIN</label>
                 <div class="auth-input-wrap">
                     <input id="f-senha-cliente" class="auth-input green-focus" type="password"
                            placeholder="••••••••" autocomplete="current-password" style="padding-right:44px">
@@ -416,27 +416,25 @@ const K11AuthUI = (() => {
         <div id="auth-toast"></div>`;
     }
 
-    // ── CLIENTE REGISTER ────────────────────────────────────────
+    // ── CLIENTE REGISTER ─────────────────────────────────────────
     function _renderClienteRegister() {
         return `
         ${_logo('Portal do Cliente')}
         <div class="auth-card green-card">
-            <button class="auth-back-btn" id="btn-back-cliente-login">
+            <button class="auth-back-btn" id="btn-back-cli-reg">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
                 Voltar para o login
             </button>
             <div class="auth-portal-badge green">🏠 Portal do Cliente</div>
             <div class="auth-card-title">Criar conta</div>
             <div class="auth-card-sub">Acompanhe suas obras em tempo real.</div>
-
             <div class="auth-field">
                 <label class="auth-label">Nome completo</label>
                 <div class="auth-input-wrap">
-                    <input id="f-nome-cli" class="auth-input green-focus" type="text" placeholder="Seu nome" autocomplete="name">
+                    <input id="f-nome-cli" class="auth-input green-focus" type="text" placeholder="Seu nome completo" autocomplete="name">
                 </div>
                 <div class="auth-field-error" id="err-nome-cli"></div>
             </div>
-
             <div class="auth-field">
                 <label class="auth-label">Email</label>
                 <div class="auth-input-wrap">
@@ -444,36 +442,33 @@ const K11AuthUI = (() => {
                 </div>
                 <div class="auth-field-error" id="err-email-cli-reg"></div>
             </div>
-
             <div class="auth-field">
                 <label class="auth-label">Senha</label>
                 <div class="auth-input-wrap">
-                    <input id="f-senha-cli-reg" class="auth-input green-focus" type="password" placeholder="Mínimo 6 caracteres" style="padding-right:44px">
-                    <button class="auth-pass-toggle" type="button" tabindex="-1" onclick="K11AuthUI._togglePass('f-senha-cli-reg','toggle-pass-cli-reg')" id="toggle-pass-cli-reg">
+                    <input id="f-senha-cli-reg" class="auth-input green-focus" type="password" placeholder="Mínimo 6 caracteres" style="padding-right:44px" autocomplete="new-password">
+                    <button class="auth-pass-toggle" type="button" tabindex="-1" onclick="K11AuthUI._togglePass('f-senha-cli-reg','tgl-cli-reg')" id="tgl-cli-reg">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                     </button>
                 </div>
                 <div class="auth-field-error" id="err-senha-cli-reg"></div>
             </div>
-
-            <button class="auth-btn green-btn" id="btn-register-cliente">CRIAR MINHA CONTA</button>
+            <button class="auth-btn green-btn" id="btn-register-cli">CRIAR MINHA CONTA</button>
         </div>
         <div id="auth-toast"></div>`;
     }
 
-    // ── CLIENTE FORGOT ───────────────────────────────────────────
+    // ── CLIENTE FORGOT ────────────────────────────────────────────
     function _renderClienteForgot() {
         return `
         ${_logo('Portal do Cliente')}
         <div class="auth-card green-card">
-            <button class="auth-back-btn" id="btn-back-cliente-login2">
+            <button class="auth-back-btn" id="btn-back-cli-forgot">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
                 Voltar para o login
             </button>
             <div class="auth-portal-badge green">🏠 Portal do Cliente</div>
             <div class="auth-card-title">Recuperar senha</div>
-            <div class="auth-card-sub">Enviaremos instruções para o seu email cadastrado.</div>
-
+            <div class="auth-card-sub">Enviaremos instruções para o email cadastrado.</div>
             <div class="auth-field">
                 <label class="auth-label">Email</label>
                 <div class="auth-input-wrap">
@@ -481,8 +476,7 @@ const K11AuthUI = (() => {
                 </div>
                 <div class="auth-field-error" id="err-email-cli-forgot"></div>
             </div>
-
-            <button class="auth-btn green-btn" id="btn-forgot-cliente">ENVIAR INSTRUÇÕES</button>
+            <button class="auth-btn green-btn" id="btn-forgot-cli">ENVIAR INSTRUÇÕES</button>
         </div>
         <div id="auth-toast"></div>`;
     }
@@ -841,13 +835,13 @@ const K11AuthUI = (() => {
             document.getElementById('f-senha')?.addEventListener('keydown', e => { if (e.key === 'Enter') _doLogin(); });
         }
         if (screen === 'clienteRegister') {
-            document.getElementById('btn-back-cliente-login')?.addEventListener('click', () => _render('clienteLogin'));
-            document.getElementById('btn-register-cliente')?.addEventListener('click', _doClienteRegister);
+            document.getElementById('btn-back-cli-reg')?.addEventListener('click', () => _render('clienteLogin'));
+            document.getElementById('btn-register-cli')?.addEventListener('click', _doClienteRegister);
             document.getElementById('f-senha-cli-reg')?.addEventListener('keydown', e => { if (e.key === 'Enter') _doClienteRegister(); });
         }
         if (screen === 'clienteForgot') {
-            document.getElementById('btn-back-cliente-login2')?.addEventListener('click', () => _render('clienteLogin'));
-            document.getElementById('btn-forgot-cliente')?.addEventListener('click', _doClienteForgot);
+            document.getElementById('btn-back-cli-forgot')?.addEventListener('click', () => _render('clienteLogin'));
+            document.getElementById('btn-forgot-cli')?.addEventListener('click', _doClienteForgot);
             document.getElementById('f-email-cli-forgot')?.addEventListener('keydown', e => { if (e.key === 'Enter') _doClienteForgot(); });
         }
         if (screen === 'clienteLogin') {
@@ -892,8 +886,8 @@ const K11AuthUI = (() => {
         _clearErrors();
         const email = document.getElementById('f-email-cliente')?.value.trim().toLowerCase();
         const senha = document.getElementById('f-senha-cliente')?.value;
-        if (!email) { _fieldError('f-email-cliente','err-email-cli','Email obrigatório.'); return; }
-        if (!senha)  { _fieldError('f-senha-cliente','err-senha-cli','Senha obrigatória.'); return; }
+        if (!email) { _fieldError('f-email-cliente','err-email-cli','Email ou LDAP obrigatório.'); return; }
+        if (!senha)  { _fieldError('f-senha-cliente','err-senha-cli','Senha ou PIN obrigatório.'); return; }
 
         _setLoading('btn-login-cliente', true);
 
@@ -926,19 +920,18 @@ const K11AuthUI = (() => {
         }
     }
 
-    // ── CLIENTE REGISTER ────────────────────────────────────────
+    // ── CLIENTE REGISTER ─────────────────────────────────────────
     async function _doClienteRegister() {
         _clearErrors();
         const nome  = document.getElementById('f-nome-cli')?.value.trim();
         const email = document.getElementById('f-email-cli-reg')?.value.trim().toLowerCase();
         const senha = document.getElementById('f-senha-cli-reg')?.value;
         let hasErr = false;
-        if (!nome || nome.length < 3) { _fieldError('f-nome-cli','err-nome-cli','Nome obrigatório (min. 3 caracteres).'); hasErr = true; }
-        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { _fieldError('f-email-cli-reg','err-email-cli-reg','Email inválido.'); hasErr = true; }
-        if (!senha || senha.length < 6) { _fieldError('f-senha-cli-reg','err-senha-cli-reg','Senha deve ter no mínimo 6 caracteres.'); hasErr = true; }
+        if (!nome || nome.length < 3)        { _fieldError('f-nome-cli','err-nome-cli','Nome obrigatório (mín. 3 caracteres).'); hasErr = true; }
+        if (!email || !email.includes('@'))  { _fieldError('f-email-cli-reg','err-email-cli-reg','Email inválido.'); hasErr = true; }
+        if (!senha || senha.length < 6)      { _fieldError('f-senha-cli-reg','err-senha-cli-reg','Senha: mínimo 6 caracteres.'); hasErr = true; }
         if (hasErr) return;
-
-        _setLoading('btn-register-cliente', true);
+        _setLoading('btn-register-cli', true);
         try {
             const res  = await fetch(`${K11_SERVER_URL}/api/auth/cliente/register`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -946,44 +939,46 @@ const K11AuthUI = (() => {
             });
             const data = await res.json();
             if (!res.ok || !data.ok) {
-                if (data.field) _fieldError(`f-${data.field}-cli-reg`, `err-${data.field}-cli-reg`, data.error);
+                const f = data.field;
+                if (f === 'nome')  _fieldError('f-nome-cli','err-nome-cli', data.error);
+                else if (f === 'email') _fieldError('f-email-cli-reg','err-email-cli-reg', data.error);
+                else if (f === 'senha') _fieldError('f-senha-cli-reg','err-senha-cli-reg', data.error);
                 else _toast(data.error || 'Erro ao cadastrar.', 'danger');
-                _setLoading('btn-register-cliente', false, 'CRIAR MINHA CONTA');
+                _setLoading('btn-register-cli', false, 'CRIAR MINHA CONTA');
                 return;
             }
             K11Auth.setToken(data.token);
             try { sessionStorage.setItem('k11_user', JSON.stringify({ nome: data.user.nome, role: 'cliente', email })); } catch {}
-            _toast('Conta criada com sucesso!', 'success', 1200);
+            _toast('Conta criada com sucesso! 🎉', 'success', 1500);
             document.body.style.opacity = '0'; document.body.style.transition = 'opacity .3s';
-            setTimeout(() => { window.location.href = 'dashboard.html'; }, 1300);
+            setTimeout(() => { window.location.href = 'dashboard.html'; }, 1600);
         } catch (e) {
             _toast('Erro de conexão. Verifique sua internet.', 'danger');
-            _setLoading('btn-register-cliente', false, 'CRIAR MINHA CONTA');
+            _setLoading('btn-register-cli', false, 'CRIAR MINHA CONTA');
         }
     }
 
-    // ── CLIENTE FORGOT ───────────────────────────────────────────
+    // ── CLIENTE FORGOT ────────────────────────────────────────────
     async function _doClienteForgot() {
         _clearErrors();
         const email = document.getElementById('f-email-cli-forgot')?.value.trim().toLowerCase();
-        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        if (!email || !email.includes('@')) {
             _fieldError('f-email-cli-forgot','err-email-cli-forgot','Email inválido.');
             return;
         }
-        _setLoading('btn-forgot-cliente', true);
+        _setLoading('btn-forgot-cli', true);
         try {
             const res  = await fetch(`${K11_SERVER_URL}/api/auth/cliente/forgot`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email }), signal: AbortSignal.timeout(10000),
             });
             const data = await res.json();
-            _setLoading('btn-forgot-cliente', false, 'ENVIAR INSTRUÇÕES');
-            // Sempre mostra mensagem neutra (não revela se email existe)
-            _toast(data.message || 'Se o email estiver cadastrado, você receberá as instruções.', 'success', 4000);
+            _setLoading('btn-forgot-cli', false, 'ENVIAR INSTRUÇÕES');
+            _toast(data.message || 'Instruções enviadas para o email.', 'success', 4000);
             setTimeout(() => _render('clienteLogin'), 4200);
         } catch (e) {
             _toast('Erro de conexão. Verifique sua internet.', 'danger');
-            _setLoading('btn-forgot-cliente', false, 'ENVIAR INSTRUÇÕES');
+            _setLoading('btn-forgot-cli', false, 'ENVIAR INSTRUÇÕES');
         }
     }
 

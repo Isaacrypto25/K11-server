@@ -1,155 +1,188 @@
 /**
- * K11 OMNI ELITE — Service Worker v1.0
- * PWA offline-first com cache estratégico
- * Cache-first para assets estáticos, network-first para API
+ * K11 OMNI ELITE — SERVICE WORKER
+ * ════════════════════════════════
+ * Estratégia: Network First para dados da API, Cache First para assets estáticos.
+ * Garante funcionamento offline parcial e instalação no iPhone (iOS 16.4+).
  */
-const CACHE_NAME   = 'k11-omni-v3';
-const API_CACHE    = 'k11-api-v1';
-const OFFLINE_PAGE = '/';
 
-const PRECACHE_URLS = [
-  '/',
+'use strict';
+
+const CACHE_NAME    = 'k11-omni-v6';
+const CACHE_STATIC  = 'k11-static-v6';
+const CACHE_DYNAMIC = 'k11-dynamic-v6';
+
+// ── Assets que entram no cache imediatamente ao instalar ──────
+const STATIC_ASSETS = [
   '/dashboard.html',
   '/global.css',
-  '/k11-skill-styles.css',
+  '/',
+  '/index.html',
   '/k11-config.js',
+  '/k11-auth-ui.js',
   '/k11-utils.js',
-  '/k11-views.js',
-  '/k11-app.js',
   '/k11-ui.js',
   '/k11-processors.js',
-  '/k11-actions-.js',
-  '/k11-brain-auxiliar.js',
+  '/k11-views.js',
+  '/k11-actions.js',
+  '/k11-app.js',
+  '/k11-modal-regional.js',
   '/k11-data-inject.js',
-  '/k11-live-panel.js',
-  '/k11-live-engine.js',
-  '/k11-skill-system.js',
-  '/k11-mission-engine.js',
-  '/k11-obra.js',
-  '/k11-voice.js',
+  '/k11-key-voice.js',
+  '/k11-voice-id.js',
+  '/k11-brain-auxiliar.js',
+  '/k11-voice-assistant.js',
   '/k11-float-ai.js',
-  '/k11-auth-ui.js',
+  '/k11-live-engine.js',
+  '/k11-setup.js',
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
+  // Fontes do Google (serão cached dinamicamente na primeira visita)
 ];
 
-/* ── INSTALL: pré-cache dos assets estáticos ─────────────────── */
-self.addEventListener('install', e => {
-  e.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(PRECACHE_URLS.filter(u => !u.includes('.json') || u === '/manifest.json')))
-      .then(() => self.skipWaiting())
-      .catch(err => console.warn('[SW] precache parcial:', err.message))
+// ── URLs da API — sempre tenta rede, sem cache ────────────────
+const API_ORIGINS = [
+  'web-production-8c4b.up.railway.app',
+  'fpvopkbzuhltosiqfcph.supabase.co',
+  'api.groq.com',
+  'texttospeech.googleapis.com',
+];
+
+const isApiRequest = (url) =>
+  API_ORIGINS.some(origin => url.includes(origin));
+
+const isStaticAsset = (url) =>
+  url.match(/\.(js|css|html|png|jpg|svg|ico|woff2?)(\?|$)/);
+
+// ─────────────────────────────────────────────────────────────
+// INSTALL — pré-cacheia assets críticos
+// ─────────────────────────────────────────────────────────────
+self.addEventListener('install', (event) => {
+  console.log('[SW] Instalando K11 OMNI PWA...');
+  event.waitUntil(
+    caches.open(CACHE_STATIC)
+      .then(cache => {
+        console.log('[SW] Cacheando assets estáticos...');
+        return cache.addAll(STATIC_ASSETS);
+      })
+      .then(() => {
+        console.log('[SW] ✅ Assets cacheados. Ativando imediatamente.');
+        return self.skipWaiting();
+      })
+      .catch(err => {
+        // Não falha a instalação se algum asset não existir ainda
+        console.warn('[SW] Alguns assets não cacheados:', err.message);
+        return self.skipWaiting();
+      })
   );
 });
 
-/* ── ACTIVATE: limpa caches antigos ──────────────────────────── */
-self.addEventListener('activate', e => {
-  e.waitUntil(
+// ─────────────────────────────────────────────────────────────
+// ACTIVATE — limpa caches antigos
+// ─────────────────────────────────────────────────────────────
+self.addEventListener('activate', (event) => {
+  console.log('[SW] Ativando novo Service Worker v5...');
+  event.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys
-        .filter(k => k !== CACHE_NAME && k !== API_CACHE)
-        .map(k => caches.delete(k))
-      )
-    ).then(() => self.clients.claim())
+      Promise.all(keys.map(k => {
+        console.log('[SW] Removendo cache:', k);
+        return caches.delete(k); // deleta TODOS, não só os antigos
+      }))
+    ).then(() => {
+      console.log('[SW] ✅ Todos os caches limpos. Service Worker ativo.');
+      return self.clients.claim();
+    })
   );
 });
 
-/* ── FETCH: estratégia por tipo de request ───────────────────── */
-self.addEventListener('fetch', e => {
-  const url = new URL(e.request.url);
+// ─────────────────────────────────────────────────────────────
+// FETCH — estratégias por tipo de recurso
+// ─────────────────────────────────────────────────────────────
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  const url = request.url;
 
-  // SSE streams — nunca interceptar
-  if (url.pathname.includes('/stream')) return;
+  // Ignora requests não-GET e chrome-extension
+  if (request.method !== 'GET') return;
+  if (url.startsWith('chrome-extension')) return;
 
-  // API calls — network-first, fallback para cache
-  if (url.pathname.startsWith('/api/')) {
-    e.respondWith(networkFirstAPI(e.request));
+  // 1️⃣ API requests — Network Only (dados sempre frescos)
+  if (isApiRequest(url)) {
+    event.respondWith(
+      fetch(request).catch(() => {
+        // Offline: retorna erro legível para o app tratar
+        return new Response(
+          JSON.stringify({ ok: false, error: 'Sem conexão com o servidor.' }),
+          { headers: { 'Content-Type': 'application/json' } }
+        );
+      })
+    );
     return;
   }
 
-  // Assets estáticos — cache-first
-  e.respondWith(cacheFirst(e.request));
+  // 2️⃣ Assets estáticos — Network First, cache como fallback
+  // (garante que atualizações de JS/CSS chegam imediatamente)
+  if (isStaticAsset(url)) {
+    event.respondWith(
+      fetch(request)
+        .then(response => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_STATIC).then(c => c.put(request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // 3️⃣ Tudo mais — Network First, cache como fallback
+  event.respondWith(
+    fetch(request)
+      .then(response => {
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_DYNAMIC).then(c => c.put(request, clone));
+        }
+        return response;
+      })
+      .catch(() => caches.match(request))
+  );
 });
 
-async function cacheFirst(req) {
-  const cached = await caches.match(req);
-  if (cached) return cached;
-  try {
-    const resp = await fetch(req);
-    if (resp.ok) {
-      const cache = await caches.open(CACHE_NAME);
-      cache.put(req, resp.clone());
-    }
-    return resp;
-  } catch {
-    const fallback = await caches.match(OFFLINE_PAGE);
-    return fallback || new Response('Offline — sem cache disponível', { status: 503 });
-  }
-}
-
-async function networkFirstAPI(req) {
-  try {
-    const resp = await fetch(req.clone(), { signal: AbortSignal.timeout(8000) });
-    if (resp.ok && req.method === 'GET') {
-      const cache = await caches.open(API_CACHE);
-      cache.put(req, resp.clone());
-    }
-    return resp;
-  } catch {
-    const cached = await caches.match(req);
-    if (cached) return cached;
-    return new Response(JSON.stringify({ ok: false, offline: true, error: 'Sem conexão' }), {
-      headers: { 'Content-Type': 'application/json' }, status: 503,
-    });
-  }
-}
-
-/* ── PUSH NOTIFICATIONS ──────────────────────────────────────── */
-self.addEventListener('push', e => {
-  if (!e.data) return;
-  const data = e.data.json();
-  e.waitUntil(
-    self.registration.showNotification(data.title || 'K11 OMNI ELITE', {
+// ─────────────────────────────────────────────────────────────
+// PUSH (futuro — notificações push)
+// ─────────────────────────────────────────────────────────────
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+  const data = event.data.json();
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'K11 OMNI', {
       body:    data.body || '',
       icon:    '/icons/icon-192.png',
-      badge:   '/icons/icon-192.png',
-      tag:     data.tag || 'k11-alert',
-      data:    data.url ? { url: data.url } : {},
-      vibrate: data.severity === 'critical' ? [200, 100, 200] : [100],
-      actions: data.actions || [],
+      badge:   '/icons/icon-96.png',
+      vibrate: [200, 100, 200],
+      data:    { url: data.url || '/dashboard.html' },
     })
   );
 });
 
-self.addEventListener('notificationclick', e => {
-  e.notification.close();
-  const url = e.notification.data?.url || '/dashboard.html';
-  e.waitUntil(
-    clients.matchAll({ type: 'window' }).then(wins => {
-      const w = wins.find(w => w.url.includes(self.location.origin));
-      if (w) { w.focus(); w.postMessage({ type: 'navigate', url }); }
-      else clients.openWindow(url);
-    })
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    clients.openWindow(event.notification.data?.url || '/dashboard.html')
   );
 });
 
-/* ── BACKGROUND SYNC ─────────────────────────────────────────── */
-self.addEventListener('sync', e => {
-  if (e.tag === 'k11-sync-queue') {
-    e.waitUntil(syncPendingActions());
+// ─────────────────────────────────────────────────────────────
+// SYNC — Background sync (futuro)
+// ─────────────────────────────────────────────────────────────
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'k11-sync-tarefas') {
+    console.log('[SW] Background sync: tarefas');
+    // Implementar quando necessário
   }
 });
 
-async function syncPendingActions() {
-  // Sincroniza ações pendentes quando volta online
-  const cache  = await caches.open('k11-pending-v1');
-  const keys   = await cache.keys();
-  for (const req of keys) {
-    try {
-      await fetch(req);
-      await cache.delete(req);
-    } catch (_) {}
-  }
-}
+console.log('[SW] K11 OMNI Service Worker carregado ✅');
