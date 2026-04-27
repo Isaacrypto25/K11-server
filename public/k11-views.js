@@ -235,14 +235,6 @@ const Views = {
                     </div>
                 </div>
 
-
-                <!-- ══ K11 v8: Command Center KPI Row ══ -->
-                <div id="k11-cc-kpi-row" class="margin-t-10"></div>
-                <script>
-                    if(typeof K11CommandCenter!=='undefined') {
-                        setTimeout(()=>K11CommandCenter.renderDashKPIs(),100);
-                    }
-                </script>
                 <!-- KPI ROW — SVG ANIMATED RINGS -->
                 <div class="kpi-row margin-t-10" id="kpi-ring-row">
                     ${(function(){

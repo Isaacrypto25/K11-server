@@ -2,54 +2,35 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#05060c">
-    <meta http-equiv="Content-Security-Policy" content="script-src 'self' https://cdnjs.cloudflare.com https://fonts.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.googleapis.com https://fonts.gstatic.com;">
-    <title>K11 OMNI ELITE v8 - Dashboard Profissional</title>
+    <title>K11 OMNI ELITE</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0">
-    <!-- K11 v8: Three.js + Engine -->
-    <script>
-    (function(){
-        var s=document.createElement('script');
-        s.src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
-        s.onload=function(){
-            var c=document.getElementById('k11-threejs-canvas');
-            if(c && window.THREE && window.K11ThreeBG) {
-                K11ThreeBG.init(c);
-            }
-        };
-        s.onerror=function(){
-            console.warn('âš ï¸  Three.js background failed to load. Continuing without 3D effects.');
-        };
-        document.head.appendChild(s);
-    })();
-    </script>
     <link rel="stylesheet" href="global.css">
-    <link rel="stylesheet" href="k11-sidebar-v9.css">
     <link rel="stylesheet" href="k11-orcamento-ia.css">
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
     <style>
-        /* AREA DO GESTOR */
+        /* ── ÁREA DO GESTOR ── */
         .gestor-only { display: none; }
         body.role-gestor .gestor-only,
         body.role-super .gestor-only { display: initial; }
         body.role-gestor .gestor-only.flex { display: flex; }
         body.role-gestor .gestor-only.grid { display: grid; }
 
-        /* AREA DO COLABORADOR */
+        /* ── ÁREA DO COLABORADOR ── */
         .colaborador-only { display: none; }
         body.role-colaborador .colaborador-only,
         body.role-gestor .colaborador-only,
         body.role-super .colaborador-only { display: initial; }
 
-        /* AREA DO CLIENTE */
+        /* ── ÁREA DO CLIENTE ── */
         .cliente-only { display: none; }
         body.role-cliente .cliente-only { display: initial; }
 
-        /* Ocultar area de gestor para clientes */
+        /* Ocultar área de gestor para clientes */
         body.role-cliente .no-cliente { display: none !important; }
         body.role-cliente .nav-btn[data-view="operacional"],
         body.role-cliente .nav-btn[data-view="estoque"],
@@ -58,7 +39,7 @@
         body.role-cliente #k11-voice-btn,
         body.role-cliente .nav-btn[data-view="projetor"] { display: none; }
         body.role-cliente .nav-btn[data-view="obraHome"] { display: flex; }
-        /* Botoes exclusivos do cliente */
+        /* Botões exclusivos do cliente */
         .nav-btn[data-view="clienteCatalogo"],
         .nav-btn[data-view="clienteCarrinho"],
         .nav-btn[data-view="clientePedidos"],
@@ -73,419 +54,898 @@
         .cart-nav-badge { position:absolute;top:2px;right:2px;background:#F4530C;color:#fff;font-size:9px;font-weight:800;padding:1px 5px;border-radius:20px;min-width:16px;text-align:center;display:none }
         body.role-cliente .cart-nav-badge { display:block }
 
-        /* PORTAL DO CLIENTE */
+        /* ── PORTAL DO CLIENTE ── */
         .cliente-portal-header {
             background: linear-gradient(135deg, rgba(16,185,129,.1), transparent);
-            border-bottom: 1px solid rgba(16,185,129,.2);
-            padding: 15px 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        .cliente-portal-header .logo {
-            font-size: 24px;
-            font-weight: bold;
-            color: #10B981;
-        }
-        .cliente-portal-header .user-info {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: #E0E0E0;
-        }
-        .cliente-portal-header .user-info .avatar {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background-color: #10B981;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            color: #05060c;
-        }
-        .cliente-portal-header .user-info span {
-            font-size: 16px;
-        }
-
-        /* Dashboard de Obra */
-        .obra-dashboard {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 20px;
+            border: 1px solid rgba(16,185,129,.25);
+            border-radius: var(--radius-xl);
             padding: 20px;
-        }
-        .obra-card {
-            background-color: #1A1D24;
-            border-radius: 12px;
-            padding: 25px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            transition: transform 0.2s ease-in-out;
-            cursor: pointer;
-            border: 1px solid #2A2D35;
-        }
-        .obra-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
-        }
-        .obra-card h3 {
-            color: #10B981;
-            font-size: 20px;
-            margin-bottom: 10px;
-        }
-        .obra-card p {
-            color: #B0B0B0;
-            font-size: 14px;
-            line-height: 1.6;
-            margin-bottom: 8px;
-        }
-        .obra-card .status {
-            display: inline-block;
-            background-color: rgba(16,185,129,.2);
-            color: #10B981;
-            padding: 5px 10px;
-            border-radius: 6px;
-            font-size: 12px;
-            font-weight: bold;
-            margin-top: 10px;
-        }
-        .obra-card .progress-bar-container {
-            background-color: #333;
-            border-radius: 5px;
-            height: 8px;
-            margin-top: 10px;
+            margin-bottom: 16px;
+            position: relative;
             overflow: hidden;
         }
-        .obra-card .progress-bar {
-            height: 100%;
-            background-color: #10B981;
-            border-radius: 5px;
-            width: var(--progress-width, 0%);
-            transition: width 0.5s ease-in-out;
-        }
-        .obra-card .meta-info {
-            display: flex;
-            justify-content: space-between;
-            font-size: 12px;
-            color: #888;
-            margin-top: 10px;
-        }
-
-        /* Estilos para o Modal de Detalhes da Obra */
-        .obra-modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.7);
-            justify-content: center;
-            align-items: center;
-            animation: fadeIn 0.3s ease-out;
-        }
-        .obra-modal-content {
-            background-color: #0d0f18;
-            padding: 30px;
-            border-radius: 15px;
-            width: 90%;
-            max-width: 800px;
-            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
-            position: relative;
-            animation: slideIn 0.3s ease-out;
-            color: #E0E0E0;
-            border: 1px solid #10B981;
-        }
-        .obra-modal-content h2 {
-            color: #10B981;
-            margin-bottom: 20px;
-            font-size: 28px;
-            border-bottom: 1px solid rgba(16,185,129,.3);
-            padding-bottom: 10px;
-        }
-        .obra-modal-content p {
-            margin-bottom: 10px;
-            line-height: 1.8;
-            font-size: 15px;
-        }
-        .obra-modal-content .status-badge {
-            background-color: rgba(16,185,129,.2);
-            color: #10B981;
-            padding: 7px 15px;
-            border-radius: 8px;
-            font-size: 13px;
-            font-weight: bold;
-            margin-top: 15px;
-            display: inline-block;
-        }
-        .obra-modal-close {
+        .cliente-portal-header::before {
+            content: '';
             position: absolute;
-            top: 15px;
-            right: 20px;
-            color: #aaa;
-            font-size: 30px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: color 0.2s;
+            top: -50%; right: -30%;
+            width: 300px; height: 300px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(16,185,129,.08) 0%, transparent 70%);
+            pointer-events: none;
         }
-        .obra-modal-close:hover,
-        .obra-modal-close:focus {
-            color: #fff;
-            text-decoration: none;
+        .cliente-portal-title {
+            font-size: 20px; font-weight: 900;
+            color: var(--text-main); letter-spacing: -.4px;
         }
-        .obra-modal-info-grid {
+        .cliente-portal-title span { color: var(--success); }
+        .cliente-portal-sub {
+            font-size: 12px; color: var(--text-muted);
+            margin-top: 4px;
+        }
+        .cliente-stat-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 1px dashed rgba(16,185,129,.1);
+            gap: 10px;
+            margin-top: 14px;
         }
-        .obra-modal-info-grid strong {
-            color: #10B981;
-            margin-right: 5px;
+        .cliente-stat-card {
+            background: rgba(255,255,255,.03);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 14px;
         }
-        .obra-modal-progress-section {
-            margin-top: 25px;
-            padding-top: 20px;
-            border-top: 1px dashed rgba(16,185,129,.1);
+        .cliente-stat-card.highlight {
+            background: rgba(16,185,129,.06);
+            border-color: rgba(16,185,129,.25);
         }
-        .obra-modal-progress-section h3 {
-            color: #10B981;
-            margin-bottom: 10px;
-            font-size: 20px;
+        .csc-val { font-size: 22px; font-weight: 900; font-family: var(--font-mono); }
+        .csc-lbl { font-size: 9px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted); margin-top: 4px; }
+        .cliente-obra-item {
+            display: flex; align-items: center; gap: 12px;
+            padding: 13px 14px; border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            background: rgba(255,255,255,.02);
+            margin-bottom: 8px; cursor: pointer;
+            transition: all .18s;
         }
-        .obra-modal-actions {
-            margin-top: 30px;
-            text-align: right;
-            border-top: 1px solid rgba(16,185,129,.3);
-            padding-top: 20px;
+        .cliente-obra-item:hover { background: rgba(255,255,255,.04); border-color: var(--border-mid); }
+        .coi-icon { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+        .coi-info { flex: 1; min-width: 0; }
+        .coi-name { font-size: 14px; font-weight: 700; color: var(--text-main); }
+        .coi-detail { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+        .coi-arrow { color: var(--text-faint); flex-shrink: 0; transition: transform .2s; }
+        .cliente-obra-item:hover .coi-arrow { transform: translateX(3px); color: var(--primary); }
+        .cliente-progress-row {
+            display: flex; align-items: center; gap: 10px;
+            padding: 12px 0; border-bottom: 1px solid var(--border);
         }
-        .obra-modal-actions button {
-            background-color: #10B981;
-            color: #0d0f18;
-            border: none;
-            padding: 12px 25px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: bold;
-            transition: background-color 0.2s, transform 0.2s;
+        .cpr-step { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
+        .cpr-step.done { background: rgba(16,185,129,.15); color: var(--success); border: 1px solid rgba(16,185,129,.3); }
+        .cpr-step.active { background: rgba(255,140,0,.15); color: var(--primary); border: 1px solid rgba(255,140,0,.3); animation: critPulse 2s infinite; }
+        .cpr-step.pending { background: rgba(255,255,255,.03); color: var(--text-muted); border: 1px solid var(--border); }
+
+        /* ── GESTOR DASHBOARD EXTRAS ── */
+        .team-member-card {
+            display: flex; align-items: center; gap: 12px;
+            padding: 12px; border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            background: rgba(255,255,255,.02);
+            margin-bottom: 6px;
         }
-        .obra-modal-actions button:hover {
-            background-color: #0e9f6e;
-            transform: translateY(-2px);
+        .team-avatar {
+            width: 36px; height: 36px; border-radius: 10px;
+            background: var(--primary-dim); border: 1px solid var(--primary-glow);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; font-weight: 900; font-family: var(--font-mono);
+            color: var(--primary); flex-shrink: 0;
+        }
+        .team-info { flex: 1; min-width: 0; }
+        .team-name { font-size: 12px; font-weight: 700; color: var(--text-main); }
+        .team-role { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+        .team-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .team-status-dot.online { background: var(--success); box-shadow: 0 0 6px rgba(16,185,129,.5); }
+        .team-status-dot.offline { background: var(--text-muted); }
+        .team-kpi { font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--primary); flex-shrink: 0; }
+
+        /* ── NOTIFICAÇÕES ── */
+        .notif-dot {
+            position: absolute; top: 6px; right: 6px;
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--danger);
+            border: 2px solid var(--bg);
+            box-shadow: 0 0 6px rgba(239,68,68,.6);
         }
 
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
+        /* ── TABS ── */
+        .tabs-row {
+            display: flex; gap: 4px;
+            background: rgba(255,255,255,.02);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 4px; margin-bottom: 14px;
         }
-
-        @keyframes slideIn {
-            from { transform: translateY(-50px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
+        .tab-btn {
+            flex: 1; padding: 9px; background: transparent;
+            border: 1px solid transparent; border-radius: var(--radius-md);
+            color: var(--text-muted); font-size: 11px; font-weight: 800;
+            cursor: pointer; transition: all .2s; text-transform: uppercase;
+            letter-spacing: .5px; font-family: var(--font-ui);
         }
-
+        .tab-btn.active {
+            background: rgba(255,140,0,.08);
+            border-color: rgba(255,140,0,.3);
+            color: var(--primary);
+        }
     </style>
 </head>
-<body class="loading" id="k11-body">
-    <div id="loading-overlay">
-        <div class="loader"></div>
-        <p>Carregando K11 Omni Elite...</p>
-    </div>
+<body>
+    <!-- ── MODAL OVERLAY ── -->
+    <div id="modal-overlay" class="modal-overlay"></div>
 
-    <div id="k11-app-container" style="display: none;">
-        <canvas id="k11-threejs-canvas"></canvas>
-        <div id="k11-sidebar" class="k11-sidebar k11-sidebar-hidden">
-            <div class="k11-sidebar-header">
-                <img src="https://ik.imagekit.io/k11/logo_k11_2_o-V0sFvR2.png" alt="K11 Logo" class="k11-logo">
-                <span class="k11-version">v8.2.1</span>
-            </div>
-            <nav class="k11-sidebar-nav">
-                <button class="nav-btn active" data-view="home">
-                    <span class="material-symbols-outlined">home</span>
-                    <span class="nav-text">Home</span>
-                </button>
-                <!-- BOTÕES DE GESTÃO - APENAS GESTOR / SUPER -->
-                <button class="nav-btn gestor-only" data-view="operacional">
-                    <span class="material-symbols-outlined">analytics</span>
-                    <span class="nav-text">Operacional</span>
-                </button>
-                <button class="nav-btn gestor-only" data-view="estoque">
-                    <span class="material-symbols-outlined">inventory_2</span>
-                    <span class="nav-text">Estoque</span>
-                </button>
-                <button class="nav-btn gestor-only" data-view="rastreio">
-                    <span class="material-symbols-outlined">location_on</span>
-                    <span class="nav-text">Rastreio</span>
-                </button>
-                <button class="nav-btn gestor-only" data-view="recebimento">
-                    <span class="material-symbols-outlined">local_shipping</span>
-                    <span class="nav-text">Recebimento</span>
-                </button>
-                <button class="nav-btn gestor-only" data-view="negocio">
-                    <span class="material-symbols-outlined">business_center</span>
-                    <span class="nav-text">Negócio</span>
-                </button>
-                <button class="nav-btn gestor-only" data-view="iaCore">
-                    <span class="material-symbols-outlined">psychology</span>
-                    <span class="nav-text">K11 AI Core</span>
-                </button>
-                 <button class="nav-btn gestor-only" data-view="aiAssistant">
-                    <span class="material-symbols-outlined">smart_toy</span>
-                    <span class="nav-text">AI Assistant</span>
-                </button>
-                <button class="nav-btn gestor-only" data-view="pdvDomination">
-                    <span class="material-symbols-outlined">trending_up</span>
-                    <span class="nav-text">PDV Domination</span>
-                </button>
-                <button class="nav-btn gestor-only" data-view="priceIntelligence">
-                    <span class="material-symbols-outlined">insights</span>
-                    <span class="nav-text">Price Intel.</span>
-                </button>
-                <button class="nav-btn gestor-only" data-view="decisionEngine">
-                    <span class="material-symbols-outlined">precision_manufacturing</span>
-                    <span class="nav-text">Decision Engine</span>
-                </button>
-                 <button class="nav-btn gestor-only" data-view="skillsMissions">
-                    <span class="material-symbols-outlined">military_tech</span>
-                    <span class="nav-text">Skills & Missões</span>
-                </button>
-                <button class="nav-btn gestor-only" data-view="nps">
-                    <span class="material-symbols-outlined">sentiment_satisfied</span>
-                    <span class="nav-text">NPS</span>
+    <!-- ── PROFILE FAB — canto superior esquerdo ── -->
+    <button id="profile-fab" onclick="K11Profile.open()" title="Meu Perfil" aria-label="Abrir perfil">
+        <div id="profile-fab-initials">K</div>
+        <div class="profile-fab-dot"></div>
+    </button>
+
+    <!-- ── PROFILE DRAWER OVERLAY ── -->
+    <div id="profile-drawer-overlay" class="profile-drawer-overlay" onclick="K11Profile.close()">
+        <!-- Drawer (não fecha ao clicar nele) -->
+        <div class="profile-drawer" id="profile-drawer" onclick="event.stopPropagation()">
+
+            <!-- Header -->
+            <div class="drawer-header">
+                <button class="drawer-close-btn" onclick="K11Profile.close()" title="Fechar">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                        <path d="M18 6L6 18M6 6l12 12"/>
+                    </svg>
                 </button>
 
-                <!-- BOTÕES DO PORTAL DO CLIENTE -->
-                <button class="nav-btn" data-view="obraHome">
-                    <span class="material-symbols-outlined">construction</span>
-                    <span class="nav-text">Minhas Obras</span>
-                </button>
-                <button class="nav-btn cliente-only" data-view="clienteCatalogo">
-                    <span class="material-symbols-outlined">storefront</span>
-                    <span class="nav-text">Catálogo</span>
-                </button>
-                <button class="nav-btn cliente-only" data-view="clienteCarrinho">
-                    <span class="material-symbols-outlined">shopping_cart</span>
-                    <span class="nav-text">Carrinho <span class="cart-nav-badge">0</span></span>
-                </button>
-                <button class="nav-btn cliente-only" data-view="clientePedidos">
-                    <span class="material-symbols-outlined">receipt_long</span>
-                    <span class="nav-text">Meus Pedidos</span>
-                </button>
-                <button class="nav-btn cliente-only" data-view="clienteOrcamento">
-                    <span class="material-symbols-outlined">request_quote</span>
-                    <span class="nav-text">Orçamentos</span>
-                </button>
-                <button class="nav-btn cliente-only" data-view="clienteFinanceiro">
-                    <span class="material-symbols-outlined">account_balance_wallet</span>
-                    <span class="nav-text">Financeiro</span>
-                </button>
-
-                <!-- Botão de Sair -->
-                <button class="nav-btn" data-view="logout">
-                    <span class="material-symbols-outlined">logout</span>
-                    <span class="nav-text">Sair</span>
-                </button>
-            </nav>
-            <div class="k11-sidebar-footer">
-                <button id="k11-voice-btn" class="voice-btn no-cliente">
-                    <span class="material-symbols-outlined">mic</span>
-                </button>
-                 <button class="nav-btn gestor-only" data-view="projetor">
-                    <span class="material-symbols-outlined">screen_share</span>
-                    <span class="nav-text">Projetor</span>
-                </button>
-            </div>
-        </div>
-
-        <div id="k11-main-content">
-            <header class="k11-topbar">
-                <button id="k11-toggle-sidebar" class="toggle-sidebar">
-                    <span class="material-symbols-outlined">menu</span>
-                </button>
-                <h1 id="k11-current-view-title" class="k11-view-title">Dashboard K11 Omni Elite</h1>
-                <div class="k11-topbar-actions">
-                     <div id="k11-user-profile" class="k11-user-profile">
-                        <img id="k11-user-avatar" src="https://placehold.co/40x40" alt="User Avatar" class="k11-avatar">
-                        <span id="k11-username" class="k11-username">Usuário</span>
-                        <div class="k11-profile-dropdown">
-                            <a href="#" id="k11-profile-link">Meu Perfil</a>
-                            <a href="#" id="k11-settings-link">Configurações</a>
-                            <a href="#" id="k11-logout-link">Sair</a>
-                        </div>
+                <div class="drawer-user-block">
+                    <div class="drawer-avatar" id="drawer-avatar">
+                        K
+                        <div class="drawer-avatar-online"></div>
+                    </div>
+                    <div>
+                        <div class="drawer-user-name" id="drawer-name">Colaborador</div>
+                        <div class="drawer-user-role role-colaborador" id="drawer-role-badge">COLABORADOR</div>
+                        <div class="drawer-user-ldap" id="drawer-ldap">73xxxxxx</div>
                     </div>
                 </div>
-            </header>
 
-            <main id="k11-views-container">
-                <!-- Views serao carregadas aqui -->
-            </main>
-        </div>
-    </div>
-
-    <!-- NOTIFICAÇÕES TOAST -->
-    <div id="k11-toast-container"></div>
-
-    <!-- MODAL GLOBAL -->
-    <div id="k11-global-modal" class="k11-modal">
-        <div class="k11-modal-content">
-            <span class="k11-modal-close">&times;</span>
-            <h2 id="k11-modal-title"></h2>
-            <div id="k11-modal-body"></div>
-            <div id="k11-modal-footer"></div>
-        </div>
-    </div>
-
-    <!-- MODAL DE DETALHES DA OBRA (CLIENTE) -->
-    <div id="obraDetailModal" class="obra-modal">
-        <div class="obra-modal-content">
-            <span class="obra-modal-close">&times;</span>
-            <h2 id="obraModalTitle"></h2>
-            <div class="obra-modal-info-grid">
-                <div><strong>Cliente:</strong> <span id="obraModalClient"></span></div>
-                <div><strong>Localização:</strong> <span id="obraModalLocation"></span></div>
-                <div><strong>Data Início:</strong> <span id="obraModalStartDate"></span></div>
-                <div><strong>Prazo:</strong> <span id="obraModalDeadline"></span></div>
-            </div>
-            <p><strong>Descrição:</strong> <span id="obraModalDescription"></span></p>
-            <div class="obra-modal-progress-section">
-                <h3>Progresso da Obra</h3>
-                <div class="progress-bar-container">
-                    <div class="progress-bar" id="obraModalProgressBar"></div>
+                <div class="drawer-stats-row">
+                    <div class="drawer-stat">
+                        <div class="drawer-stat-val" id="drawer-nivel">1</div>
+                        <div class="drawer-stat-lbl">Nível</div>
+                    </div>
+                    <div class="drawer-stat">
+                        <div class="drawer-stat-val" id="drawer-missoes">0</div>
+                        <div class="drawer-stat-lbl">Missões</div>
+                    </div>
+                    <div class="drawer-stat">
+                        <div class="drawer-stat-val" id="drawer-xp">0</div>
+                        <div class="drawer-stat-lbl">XP</div>
+                    </div>
                 </div>
-                <p>Status Atual: <span id="obraModalStatus" class="status-badge"></span></p>
+
+                <div class="drawer-xp-bar-wrap" style="margin-top:10px">
+                    <div class="drawer-xp-label">
+                        <span>XP TOTAL</span>
+                        <span id="drawer-xp-pct" style="color:var(--primary)">0%</span>
+                    </div>
+                    <div class="drawer-xp-track">
+                        <div class="drawer-xp-fill" id="drawer-xp-fill" style="width:0%"></div>
+                    </div>
+                </div>
             </div>
-            <div class="obra-modal-actions">
-                <button id="obraModalViewDetails">Ver Detalhes Completos</button>
+
+            <!-- Scrollable body -->
+            <div class="drawer-body">
+
+                <!-- Gestor section -->
+                <div class="drawer-section gestor-only">
+                    <div class="drawer-section-title">Gestão</div>
+                    <div class="drawer-nav-item" onclick="K11Profile.navigate('equipe')">
+                        <div class="drawer-nav-icon">👥</div>
+                        <div class="drawer-nav-text">
+                            <strong>Minha Equipe</strong>
+                            <span>Colaboradores e performance</span>
+                        </div>
+                        <svg class="drawer-nav-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                    </div>
+                    <div class="drawer-nav-item" onclick="K11Profile.navigate('relatorios')">
+                        <div class="drawer-nav-icon">📊</div>
+                        <div class="drawer-nav-text">
+                            <strong>Relatórios</strong>
+                            <span>Analytics e exportações</span>
+                        </div>
+                        <svg class="drawer-nav-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                    </div>
+                    <div class="drawer-nav-item" onclick="K11Profile.navigate('configuracoes')">
+                        <div class="drawer-nav-icon">⚙️</div>
+                        <div class="drawer-nav-text">
+                            <strong>Configurações</strong>
+                            <span>Sistema e permissões</span>
+                        </div>
+                        <svg class="drawer-nav-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                    </div>
+                    <div class="drawer-divider"></div>
+                </div>
+
+                <!-- Common sections -->
+                <div class="drawer-section">
+                    <div class="drawer-section-title">Minha Área</div>
+                    <div class="drawer-nav-item" onclick="K11Profile.navigate('perfil')">
+                        <div class="drawer-nav-icon">👤</div>
+                        <div class="drawer-nav-text">
+                            <strong>Meu Perfil</strong>
+                            <span>Informações e avatar</span>
+                        </div>
+                        <svg class="drawer-nav-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                    </div>
+                    <div class="drawer-nav-item" onclick="K11Profile.navigate('habilidades')">
+                        <div class="drawer-nav-icon">⭐</div>
+                        <div class="drawer-nav-text">
+                            <strong>Habilidades</strong>
+                            <span>Skills e progressão</span>
+                        </div>
+                        <svg class="drawer-nav-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                    </div>
+                    <div class="drawer-nav-item" onclick="K11Profile.navigate('missoes')">
+                        <div class="drawer-nav-icon">🎯</div>
+                        <div class="drawer-nav-text">
+                            <strong>Missões</strong>
+                            <span>Desafios e recompensas</span>
+                        </div>
+                        <div class="drawer-nav-badge" id="drawer-badge-missoes" style="display:none">0</div>
+                        <svg class="drawer-nav-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                    </div>
+                    <div class="drawer-nav-item" onclick="K11Profile.navigate('leaderboard')">
+                        <div class="drawer-nav-icon">🏆</div>
+                        <div class="drawer-nav-text">
+                            <strong>Leaderboard</strong>
+                            <span>Ranking geral</span>
+                        </div>
+                        <svg class="drawer-nav-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                    </div>
+                </div>
+
+                <div class="drawer-divider"></div>
+
+                <div class="drawer-section no-cliente">
+                    <div class="drawer-section-title">Ferramentas</div>
+                    <div class="drawer-nav-item" onclick="K11Profile.navigate('priceIntel')">
+                        <div class="drawer-nav-icon">💰</div>
+                        <div class="drawer-nav-text">
+                            <strong>Inteligência de Preços</strong>
+                            <span>Comparativo PDV</span>
+                        </div>
+                        <svg class="drawer-nav-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                    </div>
+                    <div class="drawer-nav-item" onclick="K11Profile.navigate('regional')">
+                        <div class="drawer-nav-icon">🗺️</div>
+                        <div class="drawer-nav-text">
+                            <strong>Mapa Regional</strong>
+                            <span>Dashboard interativo</span>
+                        </div>
+                        <svg class="drawer-nav-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                    </div>
+                </div>
+
+                <!-- Cliente section -->
+                <div class="drawer-section cliente-only">
+                    <div class="drawer-section-title">Portal do Cliente</div>
+                    <div class="drawer-nav-item" onclick="K11Profile.navigate('minhasObras')">
+                        <div class="drawer-nav-icon">🏗️</div>
+                        <div class="drawer-nav-text">
+                            <strong>Minhas Obras</strong>
+                            <span>Acompanhamento em tempo real</span>
+                        </div>
+                        <svg class="drawer-nav-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                    </div>
+                    <div class="drawer-nav-item" onclick="K11Profile.navigate('orcamentos')">
+                        <div class="drawer-nav-icon">📋</div>
+                        <div class="drawer-nav-text">
+                            <strong>Orçamentos</strong>
+                            <span>Pedidos e propostas</span>
+                        </div>
+                        <svg class="drawer-nav-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                    </div>
+                </div>
+
+                <div class="drawer-divider"></div>
+
+                <div class="drawer-section">
+                    <div class="drawer-section-title">Sistema</div>
+                    <div class="drawer-nav-item" onclick="APP.toggleMode(); K11Profile.close()">
+                        <div class="drawer-nav-icon">🧠</div>
+                        <div class="drawer-nav-text">
+                            <strong>Alternar Modo</strong>
+                            <span id="drawer-mode-txt">ULTRA ativo</span>
+                        </div>
+                        <span class="mode-badge ultra" id="drawer-mode-badge" style="margin-left:0">🧠 ULTRA</span>
+                    </div>
+                    <div class="drawer-nav-item" onclick="K11Profile.navigate('notificacoes')">
+                        <div class="drawer-nav-icon" style="position:relative">
+                            🔔
+                            <span class="notif-dot" id="drawer-notif-dot" style="display:none"></span>
+                        </div>
+                        <div class="drawer-nav-text">
+                            <strong>Notificações</strong>
+                            <span>Alertas e avisos</span>
+                        </div>
+                        <svg class="drawer-nav-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                    </div>
+                    <div class="drawer-nav-item" onclick="K11Profile.navigate('ajuda')">
+                        <div class="drawer-nav-icon">❓</div>
+                        <div class="drawer-nav-text">
+                            <strong>Ajuda & Suporte</strong>
+                            <span>Documentação e contato</span>
+                        </div>
+                        <svg class="drawer-nav-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="drawer-footer">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding:0 2px">
+                    <span style="font-size:9px;color:var(--text-faint);font-family:var(--font-mono);">v5.0 OMNI ELITE</span>
+                    <span style="font-size:9px;color:var(--text-faint);font-family:var(--font-mono);" id="drawer-version-date">—</span>
+                </div>
+                <button class="drawer-logout-btn" onclick="K11Profile.logout()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                        <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
+                    </svg>
+                    SAIR DO SISTEMA
+                </button>
             </div>
         </div>
     </div>
 
-    <!-- SCRIPTS -->
-    <script src="k11-config.js"></script> <!-- ESTE DEVE SER SEMPRE O PRIMEIRO -->
-    <script defer src="k11-utils.js"></script>
-    <script defer src="k11-processors.js"></script>
-    <script defer src="k11-app.js"></script>
-    <script defer src="k11-views.js"></script>
-    <script defer src="k11-actions.js"></script>
-    <script defer src="k11-live-panel.js"></script>
-    <script defer src="k11-threejs-background.js"></script>
-    <script defer src="k11-voice.js"></script>
-    <script defer src="k11-drag-resize-rotate.js"></script>
-    <script defer src="k11-context-menu.js"></script>
-    <script defer src="k11-ui-v8.js"></script>
-    <script defer src="k11-auth-improved.js"></script>
-    <script defer src="k11-notification-system.js"></script>
-    <script defer src="k11-admin.js"></script>
-    <script defer src="k11-pdv-admin.js"></script>
-    <script defer src="k11-ai-supervisor.js"></script>
-    <script defer src="k11-price-intel.js"></script>
-    <script defer src="k11-sales-engine.js"></script>
-    <script defer src="k11-orcamento-ia.js"></script>
-    <script defer src="k11-skill-system.js"></script>
-    <script defer src="k11-cliente-v8.js"></script>
+    <!-- ── TOP BAR ── -->
+    <header class="top-bar">
+        <div class="logo-container">
+            <svg class="omni-logo-svg dashboard-version" viewBox="0 0 320 80" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:var(--primary);stop-opacity:1"/>
+                        <stop offset="100%" style="stop-color:#E67E00;stop-opacity:1"/>
+                    </linearGradient>
+                </defs>
+                <path d="M35 10 L60 25 L60 55 L35 70 L10 55 L10 25 Z" fill="none" stroke="url(#logoGrad)" stroke-width="3"/>
+                <text x="35" y="44" font-family="monospace" font-size="10" font-weight="900" fill="var(--secondary)" text-anchor="middle">0MNK1</text>
+                <text x="75" y="40" font-family="'Inter',sans-serif" font-size="26" font-weight="900" fill="var(--secondary)">OMNI <tspan fill="var(--primary)">K11</tspan></text>
+                <text x="77" y="58" font-family="'Inter',sans-serif" font-size="8" font-weight="800" fill="var(--text-muted)" letter-spacing="2.5">ELITE OPERATIONAL OS</text>
+            </svg>
+        </div>
+
+        <div class="top-bar-actions">
+            <div id="engine-status" class="mono label">BOOTING...</div>
+            <span id="mode-badge-header" onclick="APP.toggleMode()"></span>
+
+
+        </div>
+    </header>
+
+    <!-- ── MAIN STAGE ── -->
+    <main id="stage">
+        <div class="centered" style="margin-top:100px">
+            <div class="spinner"></div>
+            <p class="micro-label margin-t-10" style="color:var(--text-muted)">Iniciando Kernel...</p>
+        </div>
+    </main>
+
+    <!-- ── BOTTOM NAV ── -->
+    <nav class="main-nav">
+        <button class="nav-btn active no-cliente" data-view="dash" onclick="APP.view('dash', this)">
+            <span class="material-symbols-outlined">dashboard</span>
+            <span>DASH</span>
+        </button>
+        <button class="nav-btn no-cliente" data-view="estoque" onclick="APP.view('estoque', this)" data-badge="rupturas">
+            <span class="material-symbols-outlined">inventory_2</span>
+            <span>ESTOQUE</span>
+        </button>
+        <button class="nav-btn no-cliente" data-view="operacional" onclick="APP.view('operacional', this)">
+            <span class="material-symbols-outlined">barcode_scanner</span>
+            <span>COLETA</span>
+        </button>
+        <button class="nav-btn no-cliente" id="k11-voice-btn" onclick="K11VoiceEnhanced.open(APP?.pdvAtivo?.id, APP?.pdvAtivo?.nome)">
+            <div class="voice-btn-ring">
+                <div class="voice-btn-pulse"></div>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="flex-shrink:0">
+                    <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" stroke="currentColor" stroke-width="1.8"/>
+                    <path d="M19 10v2a7 7 0 01-14 0v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    <line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    <line x1="8"  y1="23" x2="16" y2="23" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+            </div>
+            <span>VOICE</span>
+        </button>
+        <button class="nav-btn no-cliente" data-view="projetor" onclick="APP.view('projetor', this)">
+            <span class="material-symbols-outlined">query_stats</span>
+            <span>DUELO</span>
+        </button>
+        <button class="nav-btn no-cliente" data-view="rastreio" onclick="APP.view('rastreio', this)">
+            <span class="material-symbols-outlined">search</span>
+            <span>RASTREIO</span>
+        </button>
+        <button class="nav-btn no-cliente" data-view="recebimento" onclick="APP.view('recebimento', this)">
+            <span class="material-symbols-outlined">local_shipping</span>
+            <span>RECEB.</span>
+        </button>
+        <button class="nav-btn" data-view="obraHome" id="nav-obra-btn" onclick="APP.view('obraHome', this)" style="position:relative">
+            <span class="material-symbols-outlined">construction</span>
+            <span>OBRA</span>
+        </button>
+        <!-- Nav do cliente: dashboard completo -->
+        <button class="nav-btn cliente-only" data-view="clientePortal" onclick="APP.view('clientePortal', this)">
+            <span class="material-symbols-outlined">grid_view</span>
+            <span>INÍCIO</span>
+        </button>
+        <button class="nav-btn" data-view="clienteCatalogo" onclick="APP.view('clienteCatalogo', this)">
+            <span class="material-symbols-outlined">storefront</span>
+            <span>CATÁLOGO</span>
+        </button>
+        <button class="nav-btn" data-view="clienteCarrinho" onclick="APP.view('clienteCarrinho', this)" style="position:relative">
+            <span class="material-symbols-outlined">shopping_cart</span>
+            <span>CARRINHO</span>
+            <span class="cart-nav-badge" id="cart-nav-badge">0</span>
+        </button>
+        <button class="nav-btn" data-view="clientePedidos" onclick="APP.view('clientePedidos', this)">
+            <span class="material-symbols-outlined">receipt_long</span>
+            <span>PEDIDOS</span>
+        </button>
+        <button class="nav-btn" data-view="clienteOrcamento" onclick="APP.view('clienteOrcamento', this)">
+            <span class="material-symbols-outlined">smart_toy</span>
+            <span>IA ORÇAM.</span>
+        </button>
+        <button class="nav-btn" data-view="clienteFinanceiro" onclick="APP.view('clienteFinanceiro', this)">
+            <span class="material-symbols-outlined">payments</span>
+            <span>FINANC.</span>
+        </button>
+    </nav>
+
+    <!-- ── SCRIPTS ── -->
+    <script>
+        // ── MODO & ROLE ──────────────────────────────────────────
+        (function() {
+            const mode = (sessionStorage.getItem('k11_mode') || 'ultra').toLowerCase();
+            window.K11_MODE = mode;
+            if (mode === 'lite') document.body.classList.add('mode-lite');
+            window._K11_DEFAULT_VIEW = (mode === 'lite') ? 'estoque' : 'dash';
+
+            // Aplica role class no body
+            try {
+                const user = JSON.parse(sessionStorage.getItem('k11_user') || '{}');
+                const role = (user.role || 'op').toLowerCase();
+                const roleMap = { 'super': 'gestor', 'manager': 'gestor', 'gestor': 'gestor', 'op': 'colaborador', 'colaborador': 'colaborador', 'cliente': 'cliente' };
+                const bodyRole = roleMap[role] || 'colaborador';
+                document.body.classList.add('role-' + bodyRole);
+                if (role === 'super') {
+                    document.body.classList.add('role-super');
+                    document.body.classList.add('role-colaborador');
+                    // NÃO adiciona role-cliente — portais são separados
+                }
+                window._K11_ROLE = bodyRole;
+                window._K11_USER = user;
+
+                // Se cliente, default view é portal
+                if (bodyRole === 'cliente') window._K11_DEFAULT_VIEW = 'clientePortal';
+            } catch(e) {}
+        })();
+    </script>
+    <script src="k11-config.js"></script>
+    <script src="k11-setup.js"></script>
+    <script src="k11-utils.js"></script>
+    <script src="k11-ui.js"></script>
+    <script src="k11-processors.js"></script>
+    <script src="k11-views.js"></script>
+    <script src="k11-actions.js"></script>
+    <script src="k11-app.js"></script>
+    <script src="k11-modal-regional.js"></script>
+    <script src="k11-data-inject.js"></script>
+    <script src="k11-key-voice.js"></script>
+    <script src="k11-voice-id.js"></script>
+    <script src="k11-brain-auxiliar.js"></script>
+    <script src="k11-float-ai.js"></script>
+    <script src="k11-price-intel.js"></script>
+    <script src="k11_ai_voice_enhanced.js"></script>
+    <script src="k11-obra-views.js"></script>
+    <script src="k11-obra-actions.js"></script>
+    <script src="k11-skill-system.js"></script>
+    <script src="k11-mission-engine.js"></script>
+    <script src="k11-user-profile.js"></script>
+    <script src="k11-skill-init.js"></script>
+    <script src="k11-actions-extras-v5.js"></script>
+    <script src="k11-orcamento-ia.js"></script>
+
+    <!-- ── K11 PROFILE DRAWER ── -->
+    <script>
+    const K11Profile = (() => {
+        let _isOpen  = false;
+        let _closing = false; // guard contra fechamento acidental durante animação
+
+        function _getUserData() {
+            try { return JSON.parse(sessionStorage.getItem('k11_user') || '{}'); } catch { return {}; }
+        }
+
+        function _populateDrawer() {
+            const user = _getUserData();
+            const nome  = user.nome || 'Usuário K11';
+            const ldap  = user.re   || '—';
+            const role  = (user.role || 'op').toLowerCase();
+
+            // Initials
+            const initials = nome.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase() || 'K';
+            const avatarEl = document.getElementById('drawer-avatar');
+            if (avatarEl) avatarEl.childNodes[0].textContent = initials;
+
+            // Atualiza FAB e qualquer botão legado
+            ['profile-fab-initials','profile-btn-initials'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = initials;
+            });
+
+            document.getElementById('drawer-name').textContent = nome;
+            document.getElementById('drawer-ldap').textContent = ldap;
+
+            // Role badge
+            const roleBadge = document.getElementById('drawer-role-badge');
+            if (roleBadge) {
+                const roleLabels = { super: '♾️ ACESSO TOTAL', gestor: '🛡 GESTOR', manager: '🛡 GESTOR', op: '⚡ COLABORADOR', colaborador: '⚡ COLABORADOR', cliente: '🏠 CLIENTE' };
+                const roleCls = { super: 'role-gestor', gestor: 'role-gestor', manager: 'role-gestor', op: 'role-colaborador', colaborador: 'role-colaborador', cliente: 'role-cliente' };
+                roleBadge.textContent = roleLabels[role] || '⚡ COLABORADOR';
+                roleBadge.className = 'drawer-user-role ' + (roleCls[role] || 'role-colaborador');
+            }
+
+            // XP & level (se skill system disponível)
+            try {
+                if (typeof K11SkillSystem !== 'undefined') {
+                    const profile = K11SkillSystem.getUserProfile(ldap);
+                    if (profile) {
+                        const lvl = profile.level || 1;
+                        const xp  = profile.totalXP || 0;
+                        const xpPct = Math.round(((xp % 1000) / 1000) * 100);
+                        document.getElementById('drawer-nivel').textContent  = lvl;
+                        document.getElementById('drawer-xp').textContent     = xp > 999 ? Math.round(xp/1000) + 'k' : xp;
+                        document.getElementById('drawer-xp-pct').textContent = xpPct + '%';
+                        document.getElementById('drawer-xp-fill').style.width = xpPct + '%';
+
+                        // Missões pendentes
+                        const pendingMissions = (profile.missions || []).filter(m => !m.completed).length;
+                        if (pendingMissions > 0) {
+                            const badge = document.getElementById('drawer-badge-missoes');
+                            document.getElementById('drawer-missoes').textContent = pendingMissions;
+                            if (badge) { badge.textContent = pendingMissions; badge.style.display = 'inline-flex'; }
+                        }
+                    }
+                }
+            } catch(e) {}
+
+            // Mode
+            const mode = (sessionStorage.getItem('k11_mode') || 'ultra').toLowerCase();
+            const modeEl = document.getElementById('drawer-mode-txt');
+            const modeBadge = document.getElementById('drawer-mode-badge');
+            if (modeEl) modeEl.textContent = mode.toUpperCase() + ' ativo';
+            if (modeBadge) {
+                modeBadge.className = `mode-badge ${mode}`;
+                modeBadge.textContent = mode === 'lite' ? '⚡ LITE' : '🧠 ULTRA';
+            }
+
+            // Version date
+            const vdate = document.getElementById('drawer-version-date');
+            if (vdate) vdate.textContent = new Date().toLocaleDateString('pt-BR', { day:'2-digit', month:'short', year:'numeric' });
+        }
+
+        function open() {
+            if (_isOpen || _closing) return;
+            _populateDrawer();
+            _isOpen = true;
+            const overlay = document.getElementById('profile-drawer-overlay');
+            const drawer  = document.getElementById('profile-drawer');
+            if (!overlay || !drawer) return;
+            // pointer-events imediato — evita que toque "atravesse" no iOS durante transição
+            overlay.style.pointerEvents = 'all';
+            overlay.classList.add('open');
+            drawer.classList.add('open');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function close() {
+            if (!_isOpen || _closing) return;
+            _isOpen  = false;
+            _closing = true;
+            const overlay = document.getElementById('profile-drawer-overlay');
+            const drawer  = document.getElementById('profile-drawer');
+            if (!overlay || !drawer) { _closing = false; return; }
+            overlay.classList.remove('open');
+            drawer.classList.remove('open');
+            document.body.style.overflow = '';
+            // Só remove pointer-events após a transição terminar (380ms)
+            setTimeout(() => {
+                overlay.style.pointerEvents = '';
+                _closing = false;
+            }, 420);
+        }
+
+        function navigate(view) {
+            close();
+            setTimeout(() => {
+                if (!window.APP) return;
+
+                const _stage = (html) => {
+                    const stage = document.getElementById('stage');
+                    if (stage) { stage.innerHTML = html; window.scrollTo({ top: 0, behavior: 'instant' }); }
+                };
+
+                if (view === 'perfil') {
+                    const user = _getUserData();
+                    const nome = user.nome || 'Colaborador K11';
+                    const ldap = user.re   || '—';
+                    const initials = nome.split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase() || 'K';
+                    _stage(`
+                    <div class="op-card" style="margin-bottom:10px">
+                        <div class="label" style="color:var(--primary);margin-bottom:14px">👤 MEU PERFIL</div>
+                        <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px">
+                            <div style="width:56px;height:56px;border-radius:var(--radius-lg);background:var(--primary-dim);border:1.5px solid var(--primary-glow);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:var(--primary);font-family:var(--font-mono);flex-shrink:0">${initials}</div>
+                            <div>
+                                <div style="font-size:17px;font-weight:900;color:var(--text-main);letter-spacing:-.3px">${nome}</div>
+                                <div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);margin-top:3px">${ldap}</div>
+                            </div>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                            <div style="padding:12px;border-radius:var(--radius-md);border:1px solid var(--border);background:rgba(255,255,255,.02)">
+                                <div class="label-sm" style="margin-bottom:4px">NÍVEL</div>
+                                <div style="font-size:22px;font-weight:900;color:var(--primary);font-family:var(--font-mono)">1</div>
+                            </div>
+                            <div style="padding:12px;border-radius:var(--radius-md);border:1px solid var(--border);background:rgba(255,255,255,.02)">
+                                <div class="label-sm" style="margin-bottom:4px">XP TOTAL</div>
+                                <div style="font-size:22px;font-weight:900;color:var(--primary);font-family:var(--font-mono)">0</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="op-card">
+                        <div class="label" style="margin-bottom:12px">INFORMAÇÕES</div>
+                        <div style="display:flex;flex-direction:column;gap:10px">
+                            <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">
+                                <span style="font-size:12px;color:var(--text-muted)">LDAP</span>
+                                <span style="font-size:12px;font-weight:700;color:var(--text-main);font-family:var(--font-mono)">${ldap}</span>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">
+                                <span style="font-size:12px;color:var(--text-muted)">Função</span>
+                                <span style="font-size:12px;font-weight:700;color:var(--primary)">${(user.role||'colaborador').toUpperCase()}</span>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;padding:10px 0">
+                                <span style="font-size:12px;color:var(--text-muted)">Versão</span>
+                                <span style="font-size:12px;font-weight:700;color:var(--text-soft);font-family:var(--font-mono)">v5.0 OMNI ELITE</span>
+                            </div>
+                        </div>
+                    </div>`);
+
+                } else if (view === 'habilidades') {
+                    _stage(`
+                    <div class="op-card" style="margin-bottom:10px">
+                        <div class="label" style="color:var(--primary);margin-bottom:14px">⭐ HABILIDADES</div>
+                        <p style="font-size:12px;color:var(--text-muted);line-height:1.6;margin-bottom:16px">Sistema de progressão baseado em arquétipos profissionais. Complete missões para evoluir seus atributos.</p>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                            ${[['⚡','Execução','Velocidade e consistência'],['🧠','Análise','Dados e otimização'],['🤝','Interpessoal','Comunicação e liderança'],['💡','Inovação','Criatividade e soluções']].map(([ic,nm,ds]) => `
+                            <div style="padding:12px;border-radius:var(--radius-md);border:1px solid var(--border);background:rgba(255,255,255,.02);text-align:center">
+                                <div style="font-size:22px;margin-bottom:6px">${ic}</div>
+                                <div style="font-size:11px;font-weight:800;color:var(--text-main)">${nm}</div>
+                                <div style="font-size:9px;color:var(--text-muted);margin-top:3px">${ds}</div>
+                                <div style="height:3px;background:var(--border-mid);border-radius:2px;margin-top:8px;overflow:hidden">
+                                    <div style="height:100%;width:0%;background:var(--primary);border-radius:2px"></div>
+                                </div>
+                            </div>`).join('')}
+                        </div>
+                    </div>
+                    <div class="op-card">
+                        <div class="label" style="margin-bottom:10px">XP TOTAL</div>
+                        <div style="display:flex;align-items:center;gap:12px">
+                            <div style="font-size:36px;font-weight:900;color:var(--primary);font-family:var(--font-mono)">0</div>
+                            <div>
+                                <div style="font-size:11px;color:var(--text-soft)">Nível 1</div>
+                                <div style="font-size:10px;color:var(--text-muted);margin-top:2px">1.000 XP para o próximo nível</div>
+                            </div>
+                        </div>
+                        <div style="height:6px;background:var(--border-mid);border-radius:3px;margin-top:10px;overflow:hidden">
+                            <div style="height:100%;width:0%;background:linear-gradient(90deg,var(--primary),#ffc156);border-radius:3px"></div>
+                        </div>
+                    </div>`);
+
+                } else if (view === 'missoes') {
+                    _stage(`
+                    <div class="op-card" style="margin-bottom:10px">
+                        <div class="label" style="color:var(--primary);margin-bottom:14px">🎯 MISSÕES</div>
+                        <p style="font-size:12px;color:var(--text-muted);line-height:1.6;margin-bottom:16px">Complete desafios para ganhar XP e evoluir no ranking.</p>
+                        ${[['🏃','Primeira Coleta','Realize sua 1ª coleta de preços',50,'pending'],
+                           ['📊','Analista Iniciante','Registre 5 produtos em um dia',100,'pending'],
+                           ['🔄','Consistência','Complete 3 dias consecutivos de coleta',200,'pending'],
+                           ['⭐','Elite K11','Atinja 1000 XP',500,'pending']].map(([ic,nm,ds,xp,st]) => `
+                        <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:var(--radius-md);border:1px solid var(--border);background:rgba(255,255,255,.02);margin-bottom:8px;opacity:${st==='completed'?1:.7}">
+                            <div style="width:40px;height:40px;border-radius:var(--radius-md);background:var(--primary-dim);border:1px solid var(--primary-glow);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${ic}</div>
+                            <div style="flex:1">
+                                <div style="font-size:12px;font-weight:800;color:var(--text-main)">${nm}</div>
+                                <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${ds}</div>
+                            </div>
+                            <div style="text-align:right;flex-shrink:0">
+                                <div style="font-size:12px;font-weight:900;color:var(--primary);font-family:var(--font-mono)">+${xp} XP</div>
+                                <div style="font-size:9px;color:var(--text-muted);margin-top:2px">${st==='completed'?'✅ Concluída':'⏳ Pendente'}</div>
+                            </div>
+                        </div>`).join('')}
+                    </div>`);
+
+                } else if (view === 'leaderboard') {
+                    const user = _getUserData();
+                    _stage(`
+                    <div class="op-card" style="margin-bottom:10px">
+                        <div class="label" style="color:var(--primary);margin-bottom:14px">🏆 LEADERBOARD</div>
+                        <div style="display:flex;align-items:center;gap:10px;padding:12px;border-radius:var(--radius-md);border:1px solid rgba(255,140,0,.3);background:rgba(255,140,0,.06);margin-bottom:16px">
+                            <div style="font-size:24px">🥇</div>
+                            <div>
+                                <div style="font-size:12px;font-weight:800;color:var(--primary)">Ranking ativo ao concluir missões</div>
+                                <div style="font-size:10px;color:var(--text-muted);margin-top:2px">Sua posição aparecerá aqui</div>
+                            </div>
+                        </div>
+                        ${[['—', '1º', '👑', 'Líder', 0],['—', '2º', '🥈', 'Runner-up', 0],['—', '3º', '🥉', 'Top 3', 0]].map(([init,pos,ic,role,xp]) => `
+                        <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+                            <div style="font-size:18px;width:28px;text-align:center">${ic}</div>
+                            <div style="width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;color:var(--text-muted);font-family:var(--font-mono)">${init}</div>
+                            <div style="flex:1">
+                                <div style="font-size:12px;font-weight:700;color:var(--text-soft)">${pos} Posição</div>
+                                <div style="font-size:10px;color:var(--text-muted);margin-top:1px">${role}</div>
+                            </div>
+                            <div style="font-size:12px;font-weight:900;color:var(--primary);font-family:var(--font-mono)">${xp} XP</div>
+                        </div>`).join('')}
+                    </div>`);
+
+                } else if (view === 'equipe') {
+                    _stage(`
+                    <div class="op-card" style="margin-bottom:10px">
+                        <div class="label" style="color:var(--primary);margin-bottom:14px">👥 MINHA EQUIPE</div>
+                        <div style="font-size:12px;color:var(--text-muted);line-height:1.6;margin-bottom:14px">Colaboradores ativos e performance do período.</div>
+                        ${[['JP','João Pedro','Colaborador · Turno A',89,'online'],['MF','Maria Fernanda','Colaboradora · Turno B',72,'offline'],['RP','Roberto Pereira','Colaborador · Turno A',94,'online']].map(([init,nm,role,kpi,st]) => `
+                        <div class="team-member-card">
+                            <div class="team-avatar">${init}</div>
+                            <div class="team-info"><div class="team-name">${nm}</div><div class="team-role">${role}</div></div>
+                            <div class="team-kpi" style="color:${kpi>=85?'var(--success)':kpi>=70?'var(--warning)':'var(--danger)'}">${kpi}%</div>
+                            <div class="team-status-dot ${st}"></div>
+                        </div>`).join('')}
+                    </div>`);
+
+                } else if (view === 'relatorios') {
+                    _stage(`
+                    <div class="op-card" style="margin-bottom:10px">
+                        <div class="label" style="color:var(--primary);margin-bottom:14px">📊 RELATÓRIOS</div>
+                        <div style="display:flex;flex-direction:column;gap:8px">
+                            ${[['📈','Performance Semanal','Resumo de coletas e rankings'],['📦','Estoque Crítico','SKUs em ruptura e alertas'],['💰','Análise de Preços','Comparativo com PDVs concorrentes'],['📋','Exportar Dados','CSV/PDF do período atual']].map(([ic,nm,ds]) => `
+                            <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:var(--radius-md);border:1px solid var(--border);background:rgba(255,255,255,.02);cursor:pointer;transition:border-color .2s"
+                                 onclick="APP.ui.toast('Gerando relatório...', 'info')"
+                                 onmouseover="this.style.borderColor='var(--border-bright)'" onmouseout="this.style.borderColor=''">
+                                <div style="font-size:20px;width:36px;text-align:center">${ic}</div>
+                                <div style="flex:1"><div style="font-size:12px;font-weight:800;color:var(--text-main)">${nm}</div><div style="font-size:10px;color:var(--text-muted);margin-top:2px">${ds}</div></div>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                            </div>`).join('')}
+                        </div>
+                    </div>`);
+
+                } else if (view === 'configuracoes') {
+                    _stage(`
+                    <div class="op-card" style="margin-bottom:10px">
+                        <div class="label" style="color:var(--primary);margin-bottom:14px">⚙️ CONFIGURAÇÕES</div>
+                        <div style="display:flex;flex-direction:column;gap:0">
+                            ${[['🧠','Modo de Interface','Alternar entre ULTRA e LITE',() => 'APP.toggleMode()'],
+                               ['🔔','Notificações','Alertas e avisos do sistema',''],
+                               ['🎨','Tema','Dark mode (padrão)',''],
+                               ['🔒','Segurança','Alterar PIN e sessões ativas','']].map(([ic,nm,ds,ac],i,arr) => `
+                            <div style="display:flex;align-items:center;gap:12px;padding:12px 0;${i<arr.length-1?'border-bottom:1px solid var(--border)':''}">
+                                <div style="font-size:18px;width:32px;text-align:center">${ic}</div>
+                                <div style="flex:1"><div style="font-size:12px;font-weight:800;color:var(--text-main)">${nm}</div><div style="font-size:10px;color:var(--text-muted);margin-top:2px">${ds}</div></div>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                            </div>`).join('')}
+                        </div>
+                    </div>`);
+
+                } else if (view === 'notificacoes') {
+                    _stage(`
+                    <div class="op-card" style="margin-bottom:10px">
+                        <div class="label" style="color:var(--primary);margin-bottom:14px">🔔 NOTIFICAÇÕES</div>
+                        <div style="text-align:center;padding:32px 0">
+                            <div style="font-size:40px;margin-bottom:12px">🔕</div>
+                            <div style="font-size:13px;font-weight:700;color:var(--text-soft);margin-bottom:6px">Nenhuma notificação</div>
+                            <div style="font-size:11px;color:var(--text-muted)">Alertas de estoque, missões e atualizações aparecerão aqui.</div>
+                        </div>
+                    </div>`);
+
+                } else if (view === 'ajuda') {
+                    _stage(`
+                    <div class="op-card" style="margin-bottom:10px">
+                        <div class="label" style="color:var(--primary);margin-bottom:14px">❓ AJUDA & SUPORTE</div>
+                        <div style="display:flex;flex-direction:column;gap:8px">
+                            ${[['📖','Documentação','Guia completo do K11 OMNI ELITE'],['💬','Chat com Suporte','Fale com a equipe K11'],['🐛','Reportar Erro','Envie um bug report'],['📲','Versão do App','v5.0 OMNI ELITE — Build 2026']].map(([ic,nm,ds],i,arr) => `
+                            <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:var(--radius-md);border:1px solid var(--border);background:rgba(255,255,255,.02)">
+                                <div style="font-size:20px;width:32px;text-align:center">${ic}</div>
+                                <div style="flex:1"><div style="font-size:12px;font-weight:800;color:var(--text-main)">${nm}</div><div style="font-size:10px;color:var(--text-muted);margin-top:2px">${ds}</div></div>
+                            </div>`).join('')}
+                        </div>
+                    </div>`);
+
+                } else if (view === 'priceIntel') {
+                    if (typeof K11PriceIntel !== 'undefined') K11PriceIntel.open();
+                    else APP.view('dash');
+                } else if (view === 'regional') {
+                    if (typeof K11Regional !== 'undefined') K11Regional.open();
+                    else APP.view('dash');
+                } else if (view === 'minhasObras' || view === 'obraHome') {
+                    const btn = document.querySelector('[data-view="obraHome"]');
+                    if (btn) btn.click();
+                    else APP.view('obraHome');
+                } else if (view === 'clientePortal') {
+                    APP.view('clientePortal');
+                } else if (view === 'orcamentos') {
+                    APP.view('obraPedidos');
+                } else {
+                    APP.ui.toast('Área em construção', 'info');
+                }
+            }, 200);
+        }
+
+        function logout() {
+            if (!confirm('Deseja sair do sistema?')) return;
+            try {
+                if (typeof K11Auth !== 'undefined') K11Auth.clearToken();
+                sessionStorage.clear();
+                localStorage.removeItem('k11_token');
+            } catch(e) {}
+            document.body.style.opacity = '0';
+            document.body.style.transition = 'opacity .3s';
+            setTimeout(() => { window.location.href = 'index.html'; }, 320);
+        }
+
+        // Swipe to close (drag from right edge)
+        function _setupSwipe() {
+            const drawer = document.getElementById('profile-drawer');
+            let startX = 0, startY = 0, isDragging = false;
+            drawer.addEventListener('touchstart', e => {
+                startX = e.touches[0].clientX;
+                startY = e.touches[0].clientY;
+                isDragging = true;
+            }, { passive: true });
+            drawer.addEventListener('touchmove', e => {
+                if (!isDragging) return;
+                const dx = e.touches[0].clientX - startX;
+                const dy = Math.abs(e.touches[0].clientY - startY);
+                // Só arrasta se movimento for claramente horizontal (evita scroll acidental)
+                if (dy > 30) { isDragging = false; drawer.style.transform = ''; return; }
+                if (dx > 0) drawer.style.transform = `translateX(${dx}px)`;
+            }, { passive: true });
+            drawer.addEventListener('touchend', e => {
+                if (!isDragging) return;
+                isDragging = false;
+                const dx = e.changedTouches[0].clientX - startX;
+                drawer.style.transition = 'transform .3s ease';
+                drawer.style.transform = '';
+                // Threshold de 120px (mais difícil fechar acidentalmente)
+                if (dx > 120) close();
+                setTimeout(() => { drawer.style.transition = ''; }, 320);
+            }, { passive: true });
+        }
+
+        document.addEventListener('DOMContentLoaded', _setupSwipe);
+
+        // ESC to close
+        document.addEventListener('keydown', e => { if (e.key === 'Escape' && _isOpen) close(); });
+
+        return { open, close, navigate, logout };
+    })();
+
+    window.K11Profile = K11Profile;
+    </script>
+
+    <!-- ── ONBOARDING CHECK ── -->
+    <script>
+        if (!localStorage.getItem('k11_onboarding_v4')) location.href = 'k11-onboarding.html';
+    </script>
 </body>
 </html>
