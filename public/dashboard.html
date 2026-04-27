@@ -21,7 +21,7 @@
             }
         };
         s.onerror=function(){
-            console.warn('⚠️ Three.js background failed to load. Continuing without 3D effects.');
+            console.warn('âš ï¸  Three.js background failed to load. Continuing without 3D effects.');
         };
         document.head.appendChild(s);
     })();
@@ -76,99 +76,416 @@
         /* PORTAL DO CLIENTE */
         .cliente-portal-header {
             background: linear-gradient(135deg, rgba(16,185,129,.1), transparent);
-            border: 1px solid rgba(16,185,129,.25);
-            border-radius: var(--radius-xl);
+            border-bottom: 1px solid rgba(16,185,129,.2);
+            padding: 15px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .cliente-portal-header .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: #10B981;
+        }
+        .cliente-portal-header .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #E0E0E0;
+        }
+        .cliente-portal-header .user-info .avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background-color: #10B981;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #05060c;
+        }
+        .cliente-portal-header .user-info span {
+            font-size: 16px;
+        }
+
+        /* Dashboard de Obra */
+        .obra-dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
             padding: 20px;
-            margin-bottom: 16px;
-            position: relative;
+        }
+        .obra-card {
+            background-color: #1A1D24;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            transition: transform 0.2s ease-in-out;
+            cursor: pointer;
+            border: 1px solid #2A2D35;
+        }
+        .obra-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+        }
+        .obra-card h3 {
+            color: #10B981;
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+        .obra-card p {
+            color: #B0B0B0;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 8px;
+        }
+        .obra-card .status {
+            display: inline-block;
+            background-color: rgba(16,185,129,.2);
+            color: #10B981;
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        .obra-card .progress-bar-container {
+            background-color: #333;
+            border-radius: 5px;
+            height: 8px;
+            margin-top: 10px;
             overflow: hidden;
         }
+        .obra-card .progress-bar {
+            height: 100%;
+            background-color: #10B981;
+            border-radius: 5px;
+            width: var(--progress-width, 0%);
+            transition: width 0.5s ease-in-out;
+        }
+        .obra-card .meta-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #888;
+            margin-top: 10px;
+        }
 
-        /* Loading skeleton para sidebar */
-        .sidebar-nav::before {
-            content: '';
-            display: block;
-            height: 20px;
-            background: linear-gradient(90deg, #1a1a2e 0%, #16213e 50%, #1a1a2e 100%);
-            background-size: 200% 100%;
-            animation: loading 1.5s infinite;
-            margin: 8px 0;
-            border-radius: 4px;
+        /* Estilos para o Modal de Detalhes da Obra */
+        .obra-modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            justify-content: center;
+            align-items: center;
+            animation: fadeIn 0.3s ease-out;
         }
-        @keyframes loading {
-            0% { background-position: 200% 0; }
-            100% { background-position: -200% 0; }
+        .obra-modal-content {
+            background-color: #0d0f18;
+            padding: 30px;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 800px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
+            position: relative;
+            animation: slideIn 0.3s ease-out;
+            color: #E0E0E0;
+            border: 1px solid #10B981;
         }
+        .obra-modal-content h2 {
+            color: #10B981;
+            margin-bottom: 20px;
+            font-size: 28px;
+            border-bottom: 1px solid rgba(16,185,129,.3);
+            padding-bottom: 10px;
+        }
+        .obra-modal-content p {
+            margin-bottom: 10px;
+            line-height: 1.8;
+            font-size: 15px;
+        }
+        .obra-modal-content .status-badge {
+            background-color: rgba(16,185,129,.2);
+            color: #10B981;
+            padding: 7px 15px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: bold;
+            margin-top: 15px;
+            display: inline-block;
+        }
+        .obra-modal-close {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            color: #aaa;
+            font-size: 30px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .obra-modal-close:hover,
+        .obra-modal-close:focus {
+            color: #fff;
+            text-decoration: none;
+        }
+        .obra-modal-info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px dashed rgba(16,185,129,.1);
+        }
+        .obra-modal-info-grid strong {
+            color: #10B981;
+            margin-right: 5px;
+        }
+        .obra-modal-progress-section {
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px dashed rgba(16,185,129,.1);
+        }
+        .obra-modal-progress-section h3 {
+            color: #10B981;
+            margin-bottom: 10px;
+            font-size: 20px;
+        }
+        .obra-modal-actions {
+            margin-top: 30px;
+            text-align: right;
+            border-top: 1px solid rgba(16,185,129,.3);
+            padding-top: 20px;
+        }
+        .obra-modal-actions button {
+            background-color: #10B981;
+            color: #0d0f18;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: background-color 0.2s, transform 0.2s;
+        }
+        .obra-modal-actions button:hover {
+            background-color: #0e9f6e;
+            transform: translateY(-2px);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideIn {
+            from { transform: translateY(-50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
     </style>
 </head>
-<body>
-    <!-- Three.js canvas para background -->
-    <canvas id="k11-threejs-canvas" aria-hidden="true" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;opacity:0.18"></canvas>
+<body class="loading" id="k11-body">
+    <div id="loading-overlay">
+        <div class="loader"></div>
+        <p>Carregando K11 Omni Elite...</p>
+    </div>
 
-    <!-- Sidebar -->
-    <nav id="k11-sidebar" class="sidebar">
-        <div class="sidebar-header">
-            <img src="icons/icon-192.png" alt="K11 Logo" class="sidebar-logo">
-            <span class="sidebar-title">K11 OMNI</span>
+    <div id="k11-app-container" style="display: none;">
+        <canvas id="k11-threejs-canvas"></canvas>
+        <div id="k11-sidebar" class="k11-sidebar k11-sidebar-hidden">
+            <div class="k11-sidebar-header">
+                <img src="https://ik.imagekit.io/k11/logo_k11_2_o-V0sFvR2.png" alt="K11 Logo" class="k11-logo">
+                <span class="k11-version">v8.2.1</span>
+            </div>
+            <nav class="k11-sidebar-nav">
+                <button class="nav-btn active" data-view="home">
+                    <span class="material-symbols-outlined">home</span>
+                    <span class="nav-text">Home</span>
+                </button>
+                <!-- BOTÕES DE GESTÃO - APENAS GESTOR / SUPER -->
+                <button class="nav-btn gestor-only" data-view="operacional">
+                    <span class="material-symbols-outlined">analytics</span>
+                    <span class="nav-text">Operacional</span>
+                </button>
+                <button class="nav-btn gestor-only" data-view="estoque">
+                    <span class="material-symbols-outlined">inventory_2</span>
+                    <span class="nav-text">Estoque</span>
+                </button>
+                <button class="nav-btn gestor-only" data-view="rastreio">
+                    <span class="material-symbols-outlined">location_on</span>
+                    <span class="nav-text">Rastreio</span>
+                </button>
+                <button class="nav-btn gestor-only" data-view="recebimento">
+                    <span class="material-symbols-outlined">local_shipping</span>
+                    <span class="nav-text">Recebimento</span>
+                </button>
+                <button class="nav-btn gestor-only" data-view="negocio">
+                    <span class="material-symbols-outlined">business_center</span>
+                    <span class="nav-text">Negócio</span>
+                </button>
+                <button class="nav-btn gestor-only" data-view="iaCore">
+                    <span class="material-symbols-outlined">psychology</span>
+                    <span class="nav-text">K11 AI Core</span>
+                </button>
+                 <button class="nav-btn gestor-only" data-view="aiAssistant">
+                    <span class="material-symbols-outlined">smart_toy</span>
+                    <span class="nav-text">AI Assistant</span>
+                </button>
+                <button class="nav-btn gestor-only" data-view="pdvDomination">
+                    <span class="material-symbols-outlined">trending_up</span>
+                    <span class="nav-text">PDV Domination</span>
+                </button>
+                <button class="nav-btn gestor-only" data-view="priceIntelligence">
+                    <span class="material-symbols-outlined">insights</span>
+                    <span class="nav-text">Price Intel.</span>
+                </button>
+                <button class="nav-btn gestor-only" data-view="decisionEngine">
+                    <span class="material-symbols-outlined">precision_manufacturing</span>
+                    <span class="nav-text">Decision Engine</span>
+                </button>
+                 <button class="nav-btn gestor-only" data-view="skillsMissions">
+                    <span class="material-symbols-outlined">military_tech</span>
+                    <span class="nav-text">Skills & Missões</span>
+                </button>
+                <button class="nav-btn gestor-only" data-view="nps">
+                    <span class="material-symbols-outlined">sentiment_satisfied</span>
+                    <span class="nav-text">NPS</span>
+                </button>
+
+                <!-- BOTÕES DO PORTAL DO CLIENTE -->
+                <button class="nav-btn" data-view="obraHome">
+                    <span class="material-symbols-outlined">construction</span>
+                    <span class="nav-text">Minhas Obras</span>
+                </button>
+                <button class="nav-btn cliente-only" data-view="clienteCatalogo">
+                    <span class="material-symbols-outlined">storefront</span>
+                    <span class="nav-text">Catálogo</span>
+                </button>
+                <button class="nav-btn cliente-only" data-view="clienteCarrinho">
+                    <span class="material-symbols-outlined">shopping_cart</span>
+                    <span class="nav-text">Carrinho <span class="cart-nav-badge">0</span></span>
+                </button>
+                <button class="nav-btn cliente-only" data-view="clientePedidos">
+                    <span class="material-symbols-outlined">receipt_long</span>
+                    <span class="nav-text">Meus Pedidos</span>
+                </button>
+                <button class="nav-btn cliente-only" data-view="clienteOrcamento">
+                    <span class="material-symbols-outlined">request_quote</span>
+                    <span class="nav-text">Orçamentos</span>
+                </button>
+                <button class="nav-btn cliente-only" data-view="clienteFinanceiro">
+                    <span class="material-symbols-outlined">account_balance_wallet</span>
+                    <span class="nav-text">Financeiro</span>
+                </button>
+
+                <!-- Botão de Sair -->
+                <button class="nav-btn" data-view="logout">
+                    <span class="material-symbols-outlined">logout</span>
+                    <span class="nav-text">Sair</span>
+                </button>
+            </nav>
+            <div class="k11-sidebar-footer">
+                <button id="k11-voice-btn" class="voice-btn no-cliente">
+                    <span class="material-symbols-outlined">mic</span>
+                </button>
+                 <button class="nav-btn gestor-only" data-view="projetor">
+                    <span class="material-symbols-outlined">screen_share</span>
+                    <span class="nav-text">Projetor</span>
+                </button>
+            </div>
         </div>
-        <div class="sidebar-nav" id="k11-nav" role="navigation" aria-label="Menu principal">
-            <!-- Conteúdo injetado por JavaScript após autenticação -->
+
+        <div id="k11-main-content">
+            <header class="k11-topbar">
+                <button id="k11-toggle-sidebar" class="toggle-sidebar">
+                    <span class="material-symbols-outlined">menu</span>
+                </button>
+                <h1 id="k11-current-view-title" class="k11-view-title">Dashboard K11 Omni Elite</h1>
+                <div class="k11-topbar-actions">
+                     <div id="k11-user-profile" class="k11-user-profile">
+                        <img id="k11-user-avatar" src="https://placehold.co/40x40" alt="User Avatar" class="k11-avatar">
+                        <span id="k11-username" class="k11-username">Usuário</span>
+                        <div class="k11-profile-dropdown">
+                            <a href="#" id="k11-profile-link">Meu Perfil</a>
+                            <a href="#" id="k11-settings-link">Configurações</a>
+                            <a href="#" id="k11-logout-link">Sair</a>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <main id="k11-views-container">
+                <!-- Views serao carregadas aqui -->
+            </main>
         </div>
-    </nav>
+    </div>
 
-    <!-- Main content -->
-    <main id="k11-main" class="main-content">
-        <div id="k11-view-container"></div>
-    </main>
+    <!-- NOTIFICAÇÕES TOAST -->
+    <div id="k11-toast-container"></div>
 
-    <!-- Scripts carregados com defer para não bloquear renderização -->
-    <script src="k11-config.js" defer></script>
-    <script src="k11-utils.js" defer></script>
-    <script src="k11-auth-improved.js" defer></script>
-    <script src="k11-app.js" defer></script>
-    <script src="k11-views.js" defer></script>
-    <script src="k11-actions.js" defer></script>
-    <script src="k11-voice.js" defer></script>
-    <script src="k11-brain-v5.js" defer></script>
-    <script src="k11-live-engine.js" defer></script>
-    <script src="k11-live-panel.js" defer></script>
-    <script src="k11-obra.js" defer></script>
-    <script src="k11-obra-views.js" defer></script>
-    <script src="k11-obra-actions.js" defer></script>
-    <script src="k11-orcamento-ia.js" defer></script>
-    <script src="k11-price-intel.js" defer></script>
-    <script src="k11-processors.js" defer></script>
-    <script src="k11-skill-system.js" defer></script>
-    <script src="k11-skill-dashboard.js" defer></script>
-    <script src="k11-skill-init.js" defer></script>
-    <script src="k11-modal-regional.js" defer></script>
-    <script src="k11-command-center.js" defer></script>
-    <script src="k11-threejs-bg.js" defer></script>
-    <script src="k11-health-monitor.js" defer></script>
-    <script src="k11-radar-profile.js" defer></script>
-    <script src="k11-gestures.js" defer></script>
-    <script src="k11-float-ai.js" defer></script>
-    <script src="k11-voice-assistant.js" defer></script>
-    <script src="k11-voice-id.js" defer></script>
-    <script src="k11-key-voice.js" defer></script>
-    <script src="k11-theme-engine.js" defer></script>
-    <script src="k11-onboarding.js" defer></script>
-    <script src="k11-user-profile.js" defer></script>
-    <script src="k11-data-inject.js" defer></script>
-    <script src="k11-demo-data.js" defer></script>
-    <script src="k11-mission-engine.js" defer></script>
-    <script src="k11-svg-icons.js" defer></script>
-    <script src="k11-app-handler.js" defer></script>
-    <script src="k11-menu-expandable.js" defer></script>
-    <script src="k11-brain-auxiliar.js" defer></script>
-    <script src="k11-actions-base.js" defer></script>
-    <script src="k11-actions-extras-v4.js" defer></script>
-    <script src="k11-actions-extras-v5.js" defer></script>
-    <script src="k11-auth-ui.js" defer></script>
-    <script src="k11-onboarding-modal.js" defer></script>
-    <script src="k11-onboarding-tour.js" defer></script>
-    <script src="k11-ui.js" defer></script>
-    <script src="k11_ai_voice_enhanced.js" defer></script>
-    <script src="k11_supervisor_frontend.js" defer></script>
+    <!-- MODAL GLOBAL -->
+    <div id="k11-global-modal" class="k11-modal">
+        <div class="k11-modal-content">
+            <span class="k11-modal-close">&times;</span>
+            <h2 id="k11-modal-title"></h2>
+            <div id="k11-modal-body"></div>
+            <div id="k11-modal-footer"></div>
+        </div>
+    </div>
+
+    <!-- MODAL DE DETALHES DA OBRA (CLIENTE) -->
+    <div id="obraDetailModal" class="obra-modal">
+        <div class="obra-modal-content">
+            <span class="obra-modal-close">&times;</span>
+            <h2 id="obraModalTitle"></h2>
+            <div class="obra-modal-info-grid">
+                <div><strong>Cliente:</strong> <span id="obraModalClient"></span></div>
+                <div><strong>Localização:</strong> <span id="obraModalLocation"></span></div>
+                <div><strong>Data Início:</strong> <span id="obraModalStartDate"></span></div>
+                <div><strong>Prazo:</strong> <span id="obraModalDeadline"></span></div>
+            </div>
+            <p><strong>Descrição:</strong> <span id="obraModalDescription"></span></p>
+            <div class="obra-modal-progress-section">
+                <h3>Progresso da Obra</h3>
+                <div class="progress-bar-container">
+                    <div class="progress-bar" id="obraModalProgressBar"></div>
+                </div>
+                <p>Status Atual: <span id="obraModalStatus" class="status-badge"></span></p>
+            </div>
+            <div class="obra-modal-actions">
+                <button id="obraModalViewDetails">Ver Detalhes Completos</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPTS -->
+    <script src="k11-config.js"></script> <!-- ESTE DEVE SER SEMPRE O PRIMEIRO -->
+    <script defer src="k11-utils.js"></script>
+    <script defer src="k11-processors.js"></script>
+    <script defer src="k11-app.js"></script>
+    <script defer src="k11-views.js"></script>
+    <script defer src="k11-actions.js"></script>
+    <script defer src="k11-live-panel.js"></script>
+    <script defer src="k11-threejs-background.js"></script>
+    <script defer src="k11-voice.js"></script>
+    <script defer src="k11-drag-resize-rotate.js"></script>
+    <script defer src="k11-context-menu.js"></script>
+    <script defer src="k11-ui-v8.js"></script>
+    <script defer src="k11-auth-improved.js"></script>
+    <script defer src="k11-notification-system.js"></script>
+    <script defer src="k11-admin.js"></script>
+    <script defer src="k11-pdv-admin.js"></script>
+    <script defer src="k11-ai-supervisor.js"></script>
+    <script defer src="k11-price-intel.js"></script>
+    <script defer src="k11-sales-engine.js"></script>
+    <script defer src="k11-orcamento-ia.js"></script>
+    <script defer src="k11-skill-system.js"></script>
+    <script defer src="k11-cliente-v8.js"></script>
 </body>
 </html>
