@@ -1279,6 +1279,92 @@ Views.dash = function() {
     return html + Views._gestorTeamWidget();
 };
 
+// ════════════════════════════════════════════════════════════════
+// K11 OMNI ELITE — HOME / LAUNCHER DE FERRAMENTAS (estilo SAP Mobile)
+// O dashboard analítico original (já com widget de gestor) passa a
+// viver em Views.analytics(). Views.dash() agora é a tela inicial
+// com todas as ferramentas disponíveis.
+// ════════════════════════════════════════════════════════════════
+Views.analytics = Views.dash;
+
+Views.dash = function() {
+    const rupturas  = APP.db.produtos.filter(p => p.categoriaCor === 'red').length;
+    const gargalos  = APP.db.ucGlobal.length;
+    const pendentes = APP.db.tarefas.filter(t => !t.done).length;
+
+    const tools = [
+        { view: 'analytics',      icon: 'monitoring',      title: 'Analytics',   sub: 'KPIs e gráficos gerais' },
+        { view: 'estoque',        icon: 'inventory_2',     title: 'Estoque',     sub: 'Rupturas e níveis',      badge: rupturas },
+        { view: 'operacional',    icon: 'barcode_scanner', title: 'Coleta',      sub: 'Fila e rotas' },
+        { view: 'projetor',       icon: 'query_stats',     title: 'Duelo',       sub: 'Vs. concorrentes' },
+        { view: 'rastreio',       icon: 'search',          title: 'Rastreio',    sub: 'Investigar SKU' },
+        { view: 'recebimento',    icon: 'local_shipping',  title: 'Recebimento', sub: 'Agenda de fornecedores' },
+        { view: 'obraHome',       icon: 'construction',    title: 'Obras',       sub: 'Gestão de obras',        badge: gargalos },
+        { view: 'detalheTarefas', icon: 'task_alt',        title: 'Tarefas',     sub: 'Do turno',               badge: pendentes },
+    ];
+
+    const tiles = tools.map(t => `
+        <button class="k11-tile" onclick="APP.view('${t.view}')">
+            ${t.badge ? `<span class="k11-tile-badge">${t.badge}</span>` : ''}
+            <span class="material-symbols-outlined k11-tile-icon">${t.icon}</span>
+            <span class="k11-tile-title">${t.title}</span>
+            <span class="k11-tile-sub">${t.sub}</span>
+        </button>`).join('');
+
+    let saud = 'Bem-vindo';
+    try {
+        const _u = JSON.parse(sessionStorage.getItem('k11_user') || '{}');
+        const _nome = _u.nome || _u.name || '';
+        if (_nome) saud = `Olá, ${_nome.split(' ')[0]}`;
+    } catch (_) {}
+
+    return `
+        <style>
+            .k11-home-header h1 { font-size:20px; font-weight:700; color:var(--text-main); margin-bottom:4px; }
+            .k11-home-header p  { font-size:12px; color:var(--text-muted); margin-bottom:18px; }
+            .k11-tile-grid {
+                display:grid;
+                grid-template-columns:repeat(auto-fill, minmax(140px, 1fr));
+                gap:12px;
+            }
+            .k11-tile {
+                position:relative;
+                display:flex; flex-direction:column; align-items:flex-start; gap:8px;
+                background:var(--card-bg2);
+                border:1px solid var(--border-mid);
+                border-radius:var(--radius-lg);
+                padding:16px 14px;
+                cursor:pointer;
+                text-align:left;
+                transition:transform .15s ease, border-color .15s ease, background .15s ease;
+                box-shadow:var(--shadow-sm);
+            }
+            .k11-tile:active { transform:scale(0.96); }
+            .k11-tile:hover  { border-color:var(--primary); background:var(--card-surface); }
+            .k11-tile-icon {
+                font-size:24px; color:var(--primary);
+                background:var(--primary-dim);
+                border-radius:var(--radius-md);
+                width:42px; height:42px;
+                display:flex; align-items:center; justify-content:center;
+            }
+            .k11-tile-title { font-size:14px; font-weight:600; color:var(--text-main); }
+            .k11-tile-sub   { font-size:11px; color:var(--text-muted); line-height:1.3; }
+            .k11-tile-badge {
+                position:absolute; top:10px; right:10px;
+                background:var(--danger); color:#fff;
+                font-size:10px; font-weight:700;
+                min-width:18px; height:18px; padding:0 5px;
+                border-radius:var(--radius-full);
+                display:flex; align-items:center; justify-content:center;
+            }
+        </style>
+        <div class="k11-home-header">
+            <h1>${saud} 👋</h1>
+            <p>Selecione uma ferramenta para começar</p>
+        </div>
+        <div class="k11-tile-grid">${tiles}</div>`;
+};
 
 // ════════════════════════════════════════════════════════════════
 // K11 OMNI ELITE — VIEWS DO PORTAL DO CLIENTE
