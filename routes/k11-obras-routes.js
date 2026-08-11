@@ -10,7 +10,7 @@ const express = require('express');
 const router = express.Router();
 
 // Middleware de autenticação
-const authMiddleware = require('../middleware/server-auth');
+const { authMiddleware } = require('../middleware/server-auth');
 
 // ── CRIAR OBRA ───────────────────────────────────────────────────
 router.post('/obras', authMiddleware, async (req, res) => {

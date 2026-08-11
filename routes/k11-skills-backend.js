@@ -12,7 +12,7 @@ const express = require('express');
 const router = express.Router();
 
 // Middleware de autenticação (JWT)
-const authMiddleware = require('../middleware/server-auth');
+const { authMiddleware } = require('../middleware/server-auth');
 
 // ── SERVIÇO DE PERFIS ────────────────────────────────────────────
 // Este serviço interage com o banco de dados
