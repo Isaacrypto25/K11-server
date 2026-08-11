@@ -79,21 +79,25 @@ const requestTracker = require('./middleware/request-tracker');
 // ââ ROUTES ââââââââââââââââââââââââââââââââââââââââââââââââââ
 const supervisorBackend = require('./routes/k11_supervisor_backend');
 const aiCore            = require('./routes/k11_ai_core');
+const aiCoreRoutes      = require('./routes/k11_ai_core_routes');
 const pdvDomination     = require('./routes/k11_pdv_domination_engine');
+const pdvDominationRoutes = require('./routes/k11_pdv_domination_engine_routes');
 const priceIntel        = require('./routes/k11_price_intelligence');
+const priceIntelRoutes  = require('./routes/k11_price_intelligence_routes');
 const decisionEngine    = require('./routes/k11_decision_engine');
+const decisionEngineRoutes = require('./routes/k11_decision_engine_routes');
 const obramax           = require('./routes/obramax-api');
 const skillsMissions    = require('./routes/skills-missions');
 const orcamentoApproval = require('./routes/orcamento-approval');
 const clienteRoutes     = require('./routes/k11-cliente-routes');
 const clienteAuthRoutes = require('./routes/k11-cliente-auth');
 const obrasRoutes       = require('./routes/k11-obras-routes');
-const notifRoutes       = require('./routes/k11-notif-routes');
-const npsRoutes         = require('./routes/k11-nps-routes');
-const webhookRoutes     = require('./routes/k11-webhook-routes');
-const photoRoutes       = require('./routes/k11-foto-routes');
-const reportRoutes      = require('./routes/k11-relatorio-routes');
-const scheduleRoutes    = require('./routes/k11-schedule-routes');
+const notifRoutes       = require('./routes/notifications');
+const npsRoutes         = require('./routes/nps');
+const webhookRoutes     = require('./routes/webhooks');
+const photoRoutes       = require('./routes/photos');
+const reportRoutes      = require('./routes/reports');
+const scheduleRoutes    = require('./routes/schedule-intelligence');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -235,26 +239,39 @@ app.post('/api/auth/register/cliente', (req, res) => {
 // â           PROTECTED ROUTES (com autenticaÃ§Ã£o)
 // ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
-app.use('/api/supervisor', auth.authMiddleware, supervisorBackend);
-app.use('/api/ai', auth.authMiddleware, aiCore);
-app.use('/api/pdv', auth.authMiddleware, pdvDomination);
-app.use('/api/price-intel', auth.authMiddleware, priceIntel);
-app.use('/api/decision', auth.authMiddleware, decisionEngine);
+// NOTA: 'supervisorBackend' (routes/k11_supervisor_backend.js) NÃO exporta um Router do Express —
+// exporta funções soltas (init, chat, addSSEClient, getState) e nunca é usado em nenhum outro lugar
+// deste arquivo. Tentar montá-lo com app.use() quebra o boot do servidor. Removido até alguém
+// decidir se essas funções devem virar rotas de verdade ou se o arquivo é código morto.
+// aiCore, pdvDomination, priceIntel, decisionEngine (os módulos "crus" em ./routes/k11_*.js)
+// exportam funções soltas, não Router do Express. As rotas de verdade agora vivem nos
+// wrappers *_routes.js, que chamam essas funções.
+app.use('/api/ai', auth.authMiddleware, aiCoreRoutes);
+app.use('/api/pdv', auth.authMiddleware, pdvDominationRoutes);
+app.use('/api/price-intel', auth.authMiddleware, priceIntelRoutes);
+app.use('/api/decision', auth.authMiddleware, decisionEngineRoutes);
 app.use('/api/obramax', auth.authMiddleware, obramax);
 app.use('/api/skills', auth.authMiddleware, skillsMissions);
 app.use('/api/orcamento', auth.authMiddleware, orcamentoApproval);
 app.use('/api/relatorio', auth.authMiddleware, reportRoutes);
 app.use('/api/schedule', auth.authMiddleware, scheduleRoutes);
 
-// ââ CLIENT PORTAL ROUTES (com clientAuthMiddleware) ââ
-app.use('/api/cliente', clientAuth.clientAuthMiddleware, clienteRoutes);
-app.use('/api/obras', clientAuth.clientAuthMiddleware, obrasRoutes);
-app.use('/api/cliente-auth', clientAuthRoutes);
+// ââ CLIENT PORTAL ROUTES ââ
+// AVISO: 'clientAuthMiddleware' não existe em lugar nenhum do código (nem como stub).
+// middleware/k11-cliente-auth.js e routes/k11-cliente-auth.js são dois arquivos quase
+// idênticos, ambos routers de login/registro — nenhum dos dois é um middleware de
+// verificação de sessão. Ou seja: /api/cliente e /api/obras estavam SEM NENHUMA
+// autenticação. Usando aqui o par requireAuth (valida JWT) + requireCliente (garante
+// role === 'cliente') que já existem em server-auth.js, que é o que essa variável
+// deveria ter sido desde o início.
+app.use('/api/cliente', auth.requireAuth, auth.requireCliente, clienteRoutes);
+app.use('/api/obras', auth.requireAuth, auth.requireCliente, obrasRoutes);
+app.use('/api/cliente-auth', clienteAuthRoutes);
 
 // ââ SEMI-PUBLIC ROUTES âââââââââââââââââââââââââââââââââââ
 app.use('/api/notif', notifRoutes);
-app.use('/api/nps', npsRoutes);
-app.use('/api/webhook', webhookRoutes);
+app.use('/api/nps', npsRoutes.router);
+app.use('/api/webhook', webhookRoutes.router);
 app.use('/api/foto', photoRoutes);
 
 // ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
@@ -376,6 +393,18 @@ app.use((err, req, res, next) => {
 // ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // â           SERVER STARTUP
 // ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+
+// ââ INICIALIZAÃÃO DOS MOTORES DE IA/DECISÃO âââââââââââââââ
+// Sem isso, chat()/runFullCycle()/forceFullScan() rodam sem Supabase e sem logger
+// configurados â cada init() já dispara um primeiro ciclo e agenda o próximo.
+try {
+  aiCore.init(datastore.supabase, logger, {});
+  decisionEngine.init(datastore, datastore.supabase, logger, {});
+  priceIntel.init(datastore, datastore.supabase, logger, {});
+  pdvDomination.init(datastore, datastore.supabase, logger, process.env.PDV_ID, process.env.PDV_NAME, priceIntel);
+} catch (err) {
+  logger.error('SERVER', `Falha ao inicializar motores: ${err.message}`);
+}
 
 const server = app.listen(PORT, () => {
   const timestamp = new Date().toISOString();
