@@ -124,6 +124,15 @@ function verifyJWT(token) {
 // ═══════════════════════════════════════════════════════════
 
 function requireAuth(req, res, next) {
+    // Chamada serviço-a-serviço (ex: Nexus) — token estático fixo, não JWT de usuário.
+    // Configure K11_SERVICE_TOKEN no Railway com um segredo longo e aleatório, e use o
+    // MESMO valor no Nexus (K11_SERVICE_TOKEN lá também).
+    const serviceToken = req.headers['x-service-token'];
+    if (serviceToken && process.env.K11_SERVICE_TOKEN && serviceToken === process.env.K11_SERVICE_TOKEN) {
+        req.user = { role: 'service', name: req.headers['x-service-name'] || 'external-service' };
+        return next();
+    }
+
     const authHeader = req.headers['authorization'];
     // Aceita token no header OU na query string (necessário para SSE/EventSource)
     const token = authHeader?.startsWith('Bearer ')
@@ -290,6 +299,7 @@ function requireCliente(req, res, next) {
 
 module.exports = {
     requireAuth,
+    authMiddleware: requireAuth, // alias: server.js and some routes call auth.authMiddleware
     requireOperacional,
     requireCliente,
     loginHandler,
