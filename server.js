@@ -109,7 +109,18 @@ let lastAuthCheck = Date.now();
 
 // ââ MIDDLEWARE CHAIN âââââââââââââââââââââââââââââââââââââââââ
 app.use(compression());
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+      imgSrc: ["'self'", "data:", "blob:"],
+      connectSrc: ["'self'"],
+    },
+  },
+}));
 app.use(cors({
   origin: process.env.CORS_ORIGIN || '*',
   credentials: true,
